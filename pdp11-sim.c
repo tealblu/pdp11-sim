@@ -1,4 +1,4 @@
-#define DEBUG true
+// #define DEBUG
 
 /**
  * @file pdp11-sim.c
@@ -89,10 +89,10 @@ int main(int argc, char *argv[])
         i++;
     }
 
-    // verbose trace
-    if (verbose)
+    // instruction trace
+    if (trace || verbose)
     {
-        printf("instruction trace:\n");
+        printf("\n\ninstruction trace:\n");
     }
 
     // Set PC to 0
@@ -102,126 +102,92 @@ int main(int argc, char *argv[])
     while (PC < MEMSIZE)
     {
         // Get instruction
-        uint16_t instruction = memory[PC];
-
-        // Get opcode
-        uint16_t opcode = instruction >> 12;
-
+        uint16_t instruction = memory[PC++];
+        
         // Get operand
         uint16_t operand = instruction & 0x0FFF;
 
         // Get address
         uint16_t address = operand;
 
+        // Get 4 bit opcode
+        uint16_t opcode = (instruction & 0xF000) >> 12;
+        // opcodes in octal: 01 = mov, 02 = cmp, 06 = add, 016 = sub, 077 = sob, 001 = br, 002 = bne, 003 = beq, 0062 = asr, 0063 = asl, 0000 = halt
+
 #ifdef DEBUG
         printf("PC: %d, instruction: %d, opcode: %d, operand: %d, address: %d\n", PC, instruction, opcode, operand, address);
 #endif
 
-        // Execute instruction
-        // opcodes in octal: 01 = mov, 02 = cmp, 06 = add, 016 = sub, 077 = sob, 001 = br, 002 = bne, 003 = beq, 0062 = asr, 0063 = asl, 0000 = halt
-        
-        // get number of bits of opcode
-        int numBits = (int)log2(opcode) + 1;
+        // Execute 4 bit opcode
+        if(opcode == 1) // mov
+        {
+            mov(operand, address);
+        }
+        else if(opcode == 2) // cmp
+        {
+            cmp(operand, address);
+        }
+        else if(opcode == 6) // add
+        {
+            add(operand, address);
+        }
+        else if(opcode == 016) // sub
+        {
+            sub(operand, address);
+        }
 
-#ifdef DEBUG
-        printf("numBits: %d\n", numBits);
-#endif
+        // Opcode is not 4 bits, try 7
+        else if(((instruction & 0xFE00) >> 9) == 077) // sob
+        {
+            sob(operand, address);
+        }
 
-        // check for halt
-        if (opcode == 0)
+        // Opcode is not 7 bits, try 8
+        else if(((instruction & 0xFF00) >> 8) == 001) // br
+        {
+            br(operand, address);
+        }
+        else if(((instruction & 0xFF00) >> 8) == 002) // bne
+        {
+            bne(operand, address);
+        }
+        else if(((instruction & 0xFF00) >> 8) == 003) // beq
+        {
+            beq(operand, address);
+        }
+
+        // Opcode is not 8 bits, try 10
+        else if(((instruction & 0xFFC0) >> 6) == 0062) // asr
+        {
+            asr(operand, address);
+        }
+        else if(((instruction & 0xFFC0) >> 6) == 0063) // asl
+        {
+            asl(operand, address);
+        }
+
+        // Opcode is not 10 bits, try 16
+        else if(instruction == 0000) // halt
         {
             halt(operand, address);
         }
 
-        // for 4 bit opcodes
-        else if (numBits <= 4)
-        {
-            switch (opcode)
-            {
-            case 1:
-                mov(operand, address);
-                break;
-            case 2:
-                cmp(operand, address);
-                break;
-            case 6:
-                add(operand, address);
-                break;
-            case 16:
-                sub(operand, address);
-                break;
-            default:
-                printf("Invalid opcode: %o\n", opcode);
-                exit(1);
-            }
-        }
-
-        // for 7 bit opcodes
-        else if (numBits == 7)
-        {
-            switch (opcode)
-            {
-            case 77:
-                sob(operand, address);
-                break;
-            default:
-                printf("Invalid opcode: %o\n", opcode);
-                exit(1);
-            }
-        }
-
-        // for 8 bit opcodes
-        else if (numBits == 8)
-        {
-            switch (opcode)
-            {
-            case 001:
-                br(operand, address);
-                break;
-            case 002:
-                bne(operand, address);
-                break;
-            case 003:
-                beq(operand, address);
-                break;
-            default:
-                printf("Invalid opcode: %o\n", opcode);
-                exit(1);
-            }
-        }
-
-        // for 10 bit opcodes
-        else if (numBits == 10)
-        {
-            switch (opcode)
-            {
-            case 062:
-                asr(operand, address);
-                break;
-            case 063:
-                asl(operand, address);
-                break;
-            default:
-                printf("Invalid opcode: %o\n", opcode);
-                exit(1);
-            }
-        }
-
-        // error
+        // Invalid opcode
         else
         {
-            printf("Invalid opcode: %o\n", opcode);
+            printf("Invalid opcode: %d\n", opcode);
             exit(1);
         }
-
-        // increment PC
-        PC++;
     }
 }
 
 // Function definitions
 void add(uint16_t operand, uint16_t address)
 {
+    #ifdef DEBUG
+    printf("add\n");
+    #endif
+
     // get register number
     uint16_t regNum = operand >> 9;
 
@@ -237,8 +203,8 @@ void add(uint16_t operand, uint16_t address)
     }
     else
     {
-        // get value
-        value = operand & 0x00FF;
+        // get value from memory
+        value = memory[PC++];
     }
 
     // get sign bit
@@ -253,12 +219,12 @@ void add(uint16_t operand, uint16_t address)
     // add value to register
     reg[regNum] += value;
 
-    // verbose trace
-    if (verbose)
+    // instruction trace
+    if (trace || verbose)
     {
         printf("at %07o: add instruction sm %o, sr %o, dm %o, dr %o\n", PC, signBit, regNum, 0, 0);
-        printf("src.value = %07o, dst.value = %07o, result = %07o\n", value, reg[regNum] - value, reg[regNum]);
-        printf("nzvc bits = %d%d%d%d\n", (reg[regNum] >> 15) & 1, (reg[regNum] >> 14) & 1, (reg[regNum] >> 13) & 1, (reg[regNum] >> 12) & 1);
+        printf("\tsrc.value = %07o, dst.value = %07o, result = %07o\n", value, reg[regNum] - value, reg[regNum]);
+        printf("\tnzvc bits = 4'b%d%d%d%d\n", (reg[regNum] >> 15) & 1, (reg[regNum] >> 14) & 1, (reg[regNum] >> 13) & 1, (reg[regNum] >> 12) & 1);
         
         // register dump
         printf("\tR0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
@@ -268,51 +234,419 @@ void add(uint16_t operand, uint16_t address)
 
 void asl(uint16_t operand, uint16_t address)
 {
-    puts("asl");
+    #ifdef DEBUG
+    printf("asl\n");
+    #endif
+
+    // get register number
+    uint16_t regNum = operand >> 9;
+
+    // get shift amount
+    uint16_t shiftAmount = operand & 0x0007;
+
+    // get sign bit
+    uint16_t signBit = reg[regNum] >> 15;
+
+    // shift left
+    reg[regNum] = reg[regNum] << shiftAmount;
+
+    // set sign bit
+    reg[regNum] = reg[regNum] | (signBit << 15);
+
+    // clamp result to 16 bits
+    reg[regNum] = reg[regNum] & 0xFFFF;
+
+    // instruction trace
+    if (trace || verbose)
+    {
+        printf("at %07o: asl instruction sm %o, sr %o, dm %o, dr %o\n", PC, signBit, regNum, 0, 0);
+        printf("\tsrc.value = %07o, dst.value = %07o, result = %07o\n", shiftAmount, reg[regNum] >> shiftAmount, reg[regNum]);
+        printf("\tnzvc bits = 4'b%d%d%d%d\n", (reg[regNum] >> 15) & 1, (reg[regNum] >> 14) & 1, (reg[regNum] >> 13) & 1, (reg[regNum] >> 12) & 1);
+        
+        // register dump
+        printf("\tR0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
+        printf("\tR1:%07o R3:%07o R5:%07o R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
+    }
 }
 
 void asr(uint16_t operand, uint16_t address)
 {
-    puts("asr");
+    #ifdef DEBUG
+    printf("asr\n");
+    #endif
+
+    // get register number
+    uint16_t regNum = operand >> 9;
+
+    // get shift amount
+    uint16_t shiftAmount = operand & 0x0007;
+
+    // get sign bit
+    uint16_t signBit = reg[regNum] >> 15;
+
+    // sign extend to 32 bits
+    uint32_t value = reg[regNum];
+
+    // shift right
+    value = value >> shiftAmount;
+
+    // clamp to 16 bits
+    reg[regNum] = value & 0xFFFF;
+
+    // set sign bit
+    reg[regNum] = reg[regNum] | (signBit << 15);
+
+    // instruction trace
+    if (trace || verbose)
+    {
+        printf("at %07o: asr instruction sm %o, sr %o, dm %o, dr %o\n", PC, signBit, regNum, 0, 0);
+        printf("\tsrc.value = %07o, dst.value = %07o, result = %07o\n", shiftAmount, reg[regNum] << shiftAmount, reg[regNum]);
+        printf("\tnzvc bits = 4'b%d%d%d%d\n", (reg[regNum] >> 15) & 1, (reg[regNum] >> 14) & 1, (reg[regNum] >> 13) & 1, (reg[regNum] >> 12) & 1);
+        
+        // register dump
+        printf("\tR0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
+        printf("\tR1:%07o R3:%07o R5:%07o R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
+    }
 }
 
 void beq(uint16_t operand, uint16_t address)
 {
-    puts("beq");
+    #ifdef DEBUG
+    printf("beq\n");
+    #endif
+
+    // get register number
+    uint16_t regNum = operand >> 9;
+
+    // get value
+    uint16_t value = reg[regNum];
+
+    // get sign bit
+    uint16_t signBit = value >> 15;
+
+    // get value
+    if (signBit == 1)
+    {
+        value = value | 0xFE00;
+    }
+
+    // check if zero flag is set
+    if (((reg[regNum] >> 14) & 1) == 1)
+    {
+        // branch
+        PC += value;
+    }
+
+    // instruction trace
+    if (trace || verbose) {
+        printf("at %07o: beq instruction sm %o, sr %o, dm %o, dr %o\n", PC, signBit, regNum, 0, 0);
+        printf("\tsrc.value = %07o, dst.value = %07o, result = %07o\n", value, 0, 0);
+        printf("\tnzvc bits = 4'b%d%d%d%d\n", (reg[regNum] >> 15) & 1, (reg[regNum] >> 14) & 1, (reg[regNum] >> 13) & 1, (reg[regNum] >> 12) & 1);
+        
+        // register dump
+        printf("\tR0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
+        printf("\tR1:%07o R3:%07o R5:%07o R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
+    }
 }
 
 void bne(uint16_t operand, uint16_t address)
 {
-    puts("bne");
+    #ifdef DEBUG
+    printf("bne\n");
+    #endif
+
+    // get register number
+    uint16_t regNum = operand >> 9;
+
+    // get value
+    uint16_t value = reg[regNum];
+
+    // get sign bit
+    uint16_t signBit = value >> 15;
+
+    // get value
+    if (signBit == 1)
+    {
+        value = value | 0xFE00;
+    }
+
+    // check if zero flag is set
+    if (((reg[regNum] >> 14) & 1) == 0)
+    {
+        // branch
+        PC += value;
+    }
+
+    // instruction trace
+    if (trace || verbose) {
+        printf("at %07o: bne instruction sm %o, sr %o, dm %o, dr %o\n", PC, signBit, regNum, 0, 0);
+        printf("\tsrc.value = %07o, dst.value = %07o, result = %07o\n", value, 0, 0);
+        printf("\tnzvc bits = 4'b%d%d%d%d\n", (reg[regNum] >> 15) & 1, (reg[regNum] >> 14) & 1, (reg[regNum] >> 13) & 1, (reg[regNum] >> 12) & 1);
+        
+        // register dump
+        printf("\tR0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
+        printf("\tR1:%07o R3:%07o R5:%07o R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
+    }
 }
 
 void br(uint16_t operand, uint16_t address)
 {
-    puts("br");
+    #ifdef DEBUG
+    printf("br\n");
+    #endif
+
+    // get value
+    uint16_t value = operand & 0x01FF;
+
+    // get sign bit
+    uint16_t signBit = value >> 8;
+
+    // get value
+    if (signBit == 1)
+    {
+        value = value | 0xFE00;
+    }
+
+    // branch
+    PC += value;
+
+    // get register number
+    uint16_t regNum = operand >> 9;
+
+    // instruction trace
+    if (trace || verbose) {
+        printf("at %07o: br instruction sm %o, sr %o, dm %o, dr %o\n", PC - value, signBit, 0, 0, 0);
+        printf("\tsrc.value = %07o, dst.value = %07o, result = %07o\n", value, 0, 0);
+        printf("\tnzvc bits = 4'b%d%d%d%d\n", (reg[regNum] >> 15) & 1, (reg[regNum] >> 14) & 1, (reg[regNum] >> 13) & 1, (reg[regNum] >> 12) & 1);
+        
+        // register dump
+        printf("\tR0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
+        printf("\tR1:%07o R3:%07o R5:%07o R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
+    }
 }
 
 void cmp(uint16_t operand, uint16_t address)
 {
-    puts("cmp");
+    #ifdef DEBUG
+    printf("cmp\n");
+    #endif
+
+    // get register number
+    uint16_t regNum = operand >> 9;
+
+    // get value
+    uint16_t value = reg[regNum];
+
+    // get sign bit
+    uint16_t signBit = value >> 15;
+
+    // get value
+    if (signBit == 1)
+    {
+        value = value | 0xFE00;
+    }
+
+    // get register number
+    uint16_t regNum2 = operand & 0x0007;
+
+    // get value
+    uint16_t value2 = reg[regNum2];
+
+    // get sign bit
+    uint16_t signBit2 = value2 >> 15;
+
+    // get value
+    if (signBit2 == 1)
+    {
+        value2 = value2 | 0xFE00;
+    }
+
+    // check if zero flag is set
+    if (value == value2)
+    {
+        // set zero flag
+        reg[regNum] = reg[regNum] | 0x4000;
+    }
+    else
+    {
+        // clear zero flag
+        reg[regNum] = reg[regNum] & 0xBFFF;
+    }
+
+    // check if negative flag is set
+    if (value < value2)
+    {
+        // set negative flag
+        reg[regNum] = reg[regNum] | 0x8000;
+    }
+    else
+    {
+        // clear negative flag
+        reg[regNum] = reg[regNum] & 0x7FFF;
+    }
+
+    // instruction trace
+    if (trace || verbose) {
+        printf("at %07o: cmp instruction sm %o, sr %o, dm %o, dr %o\n", PC, signBit, regNum, signBit2, regNum2);
+        printf("\tsrc.value = %07o, dst.value = %07o, result = %07o\n", value, value2, 0);
+        printf("\tnzvc bits = 4'b%d%d%d%d\n", (reg[regNum] >> 15) & 1, (reg[regNum] >> 14) & 1, (reg[regNum] >> 13) & 1, (reg[regNum] >> 12) & 1);
+
+        // register dump
+        printf("\tR0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
+        printf("\tR1:%07o R3:%07o R5:%07o R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
+    }
 }
 
 void halt(uint16_t operand, uint16_t address)
 {
-    puts("halt");
-    exit(0);
+    #ifdef DEBUG
+    printf("halt\n");
+    #endif
+
+    // instruction trace
+    if (trace || verbose) {
+        printf("at %07o: halt instruction sm %o, sr %o, dm %o, dr %o\n", PC, 0, 0, 0, 0);
+        printf("\tsrc.value = %07o, dst.value = %07o, result = %07o\n", 0, 0, 0);
+        printf("\tnzvc bits = 4'b%d%d%d%d\n", (reg[0] >> 15) & 1, (reg[0] >> 14) & 1, (reg[0] >> 13) & 1, (reg[0] >> 12) & 1);
+        
+        // register dump
+        printf("\tR0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
+        printf("\tR1:%07o R3:%07o R5:%07o R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
+    }
+
+    // halt
+    exit(1);
 }
 
 void mov(uint16_t operand, uint16_t address)
 {
-    puts("mov");
+    #ifdef DEBUG
+    printf("mov\n");
+    #endif
+
+    // get register number
+    uint16_t regNum = operand >> 9;
+
+    // check if operand is a register
+    uint16_t value;
+    if (operand >> 8 == 0)
+    {
+        // get register number
+        uint16_t regNum2 = operand & 0x0007;
+
+        // get value
+        value = reg[regNum2];
+    }
+    else
+    {
+        // get value from memory
+        value = memory[PC++];
+    }
+
+    // move value to register
+    reg[regNum] = value;
+
+    // get sm
+    uint16_t sm = value >> 15;
+
+    // instruction trace
+    if (trace || verbose)
+    {
+        printf("at %07o: mov instruction sm %o, sr %o, dm %o, dr %o\n", PC, sm, regNum, 0, 0);
+        printf("\tsrc.value = %07o, dst.value = %07o, result = %07o\n", value, reg[regNum] - value, reg[regNum]);
+        printf("\tnzvc bits = 4'b%d%d%d%d\n", (reg[regNum] >> 15) & 1, (reg[regNum] >> 14) & 1, (reg[regNum] >> 13) & 1, (reg[regNum] >> 12) & 1);
+        
+        // register dump
+        printf("\tR0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
+        printf("\tR1:%07o R3:%07o R5:%07o R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
+    }
 }
 
 void sob(uint16_t operand, uint16_t address)
 {
-    puts("sob");
+    #ifdef DEBUG
+    printf("sob\n");
+    #endif
+
+    // get register number
+    uint16_t regNum = operand >> 6;
+
+    // get value
+    uint16_t value = reg[regNum];
+
+    // decrement value
+    value--;
+
+    // check if value is zero
+    if (value == 0)
+    {
+        // get offset
+        uint16_t offset = operand & 0x003F;
+
+        // get address
+        uint16_t address = PC - offset;
+
+        // set PC
+        PC = address;
+    }
+    else
+    {
+        // set value
+        reg[regNum] = value;
+    }
+
+    // instruction trace
+    if (trace || verbose) {
+        printf("at %07o: sob instruction sm %o, sr %o, dm %o, dr %o\n", PC, 0, regNum, 0, 0);
+        printf("\tsrc.value = %07o, dst.value = %07o, result = %07o\n", 0, value, 0);
+        printf("\tnzvc bits = 4'b%d%d%d%d\n", (reg[regNum] >> 15) & 1, (reg[regNum] >> 14) & 1, (reg[regNum] >> 13) & 1, (reg[regNum] >> 12) & 1);
+        
+        // register dump
+        printf("\tR0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
+        printf("\tR1:%07o R3:%07o R5:%07o R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
+    }
 }
 
 void sub(uint16_t operand, uint16_t address)
 {
-    puts("sub");
+    #ifdef DEBUG
+    printf("sub\n");
+    #endif
+
+    // get register number
+    uint16_t regNum = operand >> 9;
+
+    // check if operand is a register
+    uint16_t value;
+    if (operand >> 8 == 0)
+    {
+        // get register number
+        uint16_t regNum2 = operand & 0x0007;
+
+        // get value
+        value = reg[regNum2];
+    }
+    else
+    {
+        // get value from memory
+        value = memory[++PC];
+    }
+
+    // subtract value from register
+    reg[regNum] = reg[regNum] - value;
+
+    // get sm
+    uint16_t sm = value >> 15;
+
+    // instruction trace
+    if (trace || verbose)
+    {
+        printf("at %07o: sub instruction sm %o, sr %o, dm %o, dr %o\n", PC, sm, regNum, 0, 0);
+        printf("\tsrc.value = %07o, dst.value = %07o, result = %07o\n", value, reg[regNum] + value, reg[regNum]);
+        printf("\tnzvc bits = 4'b%d%d%d%d\n", (reg[regNum] >> 15) & 1, (reg[regNum] >> 14) & 1, (reg[regNum] >> 13) & 1, (reg[regNum] >> 12) & 1);
+        
+        // register dump
+        printf("\tR0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
+        printf("\tR1:%07o R3:%07o R5:%07o R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
+    }
 }
