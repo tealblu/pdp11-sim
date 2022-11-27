@@ -101,6 +101,11 @@ int main(int argc, char *argv[])
     // Loop through memory
     while (PC < MEMSIZE)
     {
+        if(trace || verbose)
+        {
+            printf("at %07o: ", PC);
+        }
+
         // Get instruction
         uint16_t instruction = memory[PC++];
         
@@ -332,7 +337,7 @@ void add(uint16_t operand)
     // instruction trace
     if (trace || verbose)
     {
-        printf("at %07o: add instruction sm %o, sr %o, dm %o, dr %o\n", PC, src, dst, reg[regNum], reg[regNum]);
+        printf("add instruction sm %o, sr %o, dm %o, dr %o\n", src, dst, reg[regNum], reg[regNum]);
         printf("\tsrc.value = %07o, dst.value = %07o, result = %07o\n", src, dst, reg[regNum]);
         printf("\tnzvc bits = 4'b%d%d%d%d\n", (reg[regNum] >> 15) & 1, (reg[regNum] >> 14) & 1, (reg[regNum] >> 13) & 1, (reg[regNum] >> 12) & 1);
         
@@ -494,7 +499,7 @@ void asl(uint16_t operand)
     // instruction trace
     if (trace || verbose)
     {
-        printf("at %07o: asl instruction sm %o, sr %o, dm %o, dr %o\n", PC, src, dst, reg[regNum], reg[regNum]);
+        printf("asl instruction sm %o, sr %o, dm %o, dr %o\n", src, dst, reg[regNum], reg[regNum]);
         printf("\tsrc.value = %07o, dst.value = %07o, result = %07o\n", src, dst, reg[regNum]);
         printf("\tnzvc bits = 4'b%d%d%d%d\n", n, z, v, c);
         
@@ -662,7 +667,7 @@ void asr(uint16_t operand)
     // instruction trace
     if (trace || verbose)
     {
-        printf("at %07o: asr instruction sm %o, sr %o, dm %o, dr %o\n", PC, src, dst, reg[regNum], reg[regNum]);
+        printf("asr instruction sm %o, sr %o, dm %o, dr %o\n", src, dst, reg[regNum], reg[regNum]);
         printf("\tsrc.value = %07o, dst.value = %07o, result = %07o\n", src, dst, reg[regNum]);
         printf("\tnzvc bits = 4'b%d%d%d%d\n", n, z, v, c);
         
@@ -850,7 +855,7 @@ void beq(uint16_t operand)
 
     // instruction trace
     if (trace || verbose) {
-        printf("at %07o: beq instruction sm %o, sr %o, dm %o, dr %o\n", PC, src, dst, reg[regNum], reg[regNum]);
+        printf("beq instruction sm %o, sr %o, dm %o, dr %o\n", src, dst, reg[regNum], reg[regNum]);
         printf("\tsrc.value = %07o, dst.value = %07o, result = %07o\n", src, dst, reg[regNum]);
         printf("\tnzvc bits = 4'b%d%d%d%d\n", n, z, v, c);
         
@@ -1039,7 +1044,7 @@ void bne(uint16_t operand)
 
     // instruction trace
     if (trace || verbose) {
-        printf("at %07o: bne instruction sm %o, sr %o, dm %o, dr %o\n", PC, src, dst, reg[regNum], reg[regNum]);
+        printf("bne instruction sm %o, sr %o, dm %o, dr %o\n", src, dst, reg[regNum], reg[regNum]);
         printf("\tsrc.value = %07o, dst.value = %07o, result = %07o\n", src, dst, reg[regNum]);
         printf("\tnzvc bits = 4'b%d%d%d%d\n", n, z, v, c);
         
@@ -1200,7 +1205,7 @@ void br(uint16_t operand)
 
     // instruction trace
     if (trace || verbose) {
-        printf("at %07o: br instruction sm %o, sr %o, dm %o, dr %o\n", PC, src, dst, reg[regNum], reg[regNum]);
+        printf("br instruction sm %o, sr %o, dm %o, dr %o\n", src, dst, reg[regNum], reg[regNum]);
         printf("\tsrc.value = %07o, dst.value = %07o, result = %07o\n", src, dst, reg[regNum]);
         printf("\tnzvc bits = 4'b%d%d%d%d\n", n, z, v, c);
         
@@ -1337,7 +1342,7 @@ void cmp(uint16_t operand)
 
     // instruction trace
     if (trace || verbose) {
-        printf("at %07o: cmp instruction sm %o, sr %o, dm %o, dr %o\n", PC, src, dst, reg[regNum], reg[regNum]);
+        printf("cmp instruction sm %o, sr %o, dm %o, dr %o\n", src, dst, reg[regNum], reg[regNum]);
         printf("\tsrc.value = %07o, dst.value = %07o, result = %07o\n", src, dst, reg[regNum]);
         printf("\tnzvc bits = 4'b%d%d%d%d\n", n, z, v, c);
 
@@ -1368,7 +1373,7 @@ void halt(uint16_t operand)
 
     // instruction trace
     if (trace || verbose) {
-        printf("at %07o: halt instruction sm %o, sr %o, dm %o, dr %o\n", PC, 0, 0, 0, 0);
+        printf("halt instruction sm %o, sr %o, dm %o, dr %o\n", 0, 0, 0, 0);
         printf("\tsrc.value = %07o, dst.value = %07o, result = %07o\n", 0, 0, 0);
         printf("\tnzvc bits = 4'b%d%d%d%d\n", n, z, v, c);
         
@@ -1506,7 +1511,7 @@ void mov(uint16_t operand)
     // instruction trace
     if (trace || verbose)
     {
-        printf("at %07o: mov instruction sm %o, sr %o, dm %o, dr %o\n", PC, src, dst, reg[regNum], reg[regNum]);
+        printf("mov instruction sm %o, sr %o, dm %o, dr %o\n", src, dst, reg[regNum], reg[regNum]);
         printf("\tsrc.value = %07o, dst.value = %07o, result = %07o\n", src, dst, reg[regNum]);
         printf("\tnzvc bits = 4'b%d%d%d%d\n", n, z, v, c);
         
@@ -1554,7 +1559,7 @@ void sob(uint16_t operand)
     // instruction trace
     if (trace || verbose)
     {
-        printf("at %07o: sob instruction sm %o, sr %o, dm %o, dr %o\n", PC, 0, 0, 0, 0);
+        printf("sob instruction sm %o, sr %o, dm %o, dr %o\n", 0, 0, 0, 0);
         printf("\tsrc.value = %07o, dst.value = %07o, result = %07o\n", 0, 0, 0);
         printf("\tnzvc bits = 4'b%d%d%d%d\n", n, z, v, c);
         
@@ -1692,7 +1697,7 @@ void sub(uint16_t operand)
     // instruction trace
     if (trace || verbose)
     {
-        printf("at %07o: sub instruction sm %o, sr %o, dm %o, dr %o\n", PC, 0, 0, 0, 0);
+        printf("sub instruction sm %o, sr %o, dm %o, dr %o\n", 0, 0, 0, 0);
         printf("\tsrc.value = %07o, dst.value = %07o, result = %07o\n", src, dst, reg[regNum]);
         printf("\tnzvc bits = 4'b%d%d%d%d\n", n, z, v, c);
         
