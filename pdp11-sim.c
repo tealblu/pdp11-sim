@@ -1,4 +1,4 @@
-#define DEBUG
+// #define DEBUG
 
 /**
  * @file pdp11-sim.c
@@ -114,7 +114,7 @@ int main(int argc, char *argv[])
     // instruction trace
     if (trace || verbose)
     {
-        printf("\n\ninstruction trace:\n");
+        printf("\ninstruction trace:\n");
     }
 
     // Set PC to 0
@@ -212,6 +212,13 @@ int main(int argc, char *argv[])
     printf("\tdata words written: %d\n", memory_writes);
     printf("\tbranches executed: %d\n", branch_execs);
     printf("\tbranches taken: %d\n", branch_taken);
+
+    // Print first 20 words of memory after execution halts
+    printf("\nfirst 20 words of memory after execution halts:\n");
+    for(int i = 0; i < 20; i++)
+    {
+        printf("%05o: %07o\n", i, memory[i]);
+    }
 }
 
 // Function definitions
@@ -456,12 +463,9 @@ void asl(uint16_t operand)
     // Get source and destination values
     get_operand(&src);
     get_operand(&dst);
-
-    // Shift left source and destination
-    dst.value = dst.value << src.value;
     
-    // Write back to memory
-    memory[dst.addr] = dst.value;
+    // Shift left
+    memory[dst.addr] = dst.value << 1;
 
     // Set condition codes
     n = dst.value & 0x8000;
@@ -508,8 +512,8 @@ void asr(uint16_t operand)
         src.value |= 0xFFFF0000;
     }
 
-    // Shift destination right by source
-    dst.value = dst.value >> src.value;
+    // Shift destination right
+    dst.value = dst.value >> 1;
 
     // Trim to 16 bits
     dst.value &= 0xFFFF;
