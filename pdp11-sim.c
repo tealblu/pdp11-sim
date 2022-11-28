@@ -49,7 +49,9 @@ int branch_taken = 0;
 int branch_execs = 0;
 
 // Function prototypes
+void operate(uint16_t instruction);
 void get_operand(addr_phrase_t *phrase);
+void update_operand(addr_phrase_t *phrase);
 void add(uint16_t operand);
 void asl(uint16_t operand);
 void asr(uint16_t operand);
@@ -61,11 +63,19 @@ void halt(uint16_t operand);
 void mov(uint16_t operand);
 void sob(uint16_t operand);
 void sub(uint16_t operand);
+void pstats();
 
 // Main function
 int main(int argc, char *argv[])
 {
+    // Initialize everything
     running = true;
+    n = z = v = c = false;
+    src.mode = src.reg = src.addr = src.value = 0;
+    dst.mode = dst.reg = dst.addr = dst.value = 0;
+
+    // Initialize memory
+    for (int i = 0; i < MEMSIZE; i++) memory[i] = 0;
 
     // Run command format: ./a.out <flags>
     // Flags: -t (instruction trace), -v (verbose trace)
@@ -73,14 +83,8 @@ int main(int argc, char *argv[])
     // Check for flags
     for (int i = 1; i < argc; i++)
     {
-        if (strcmp(argv[i], "-t") == 0)
-        {
-            trace = true;
-        }
-        else if (strcmp(argv[i], "-v") == 0)
-        {
-            verbose = true;
-        }
+        if (strcmp(argv[i], "-t") == 0) trace = true;
+        else if (strcmp(argv[i], "-v") == 0) verbose = true;
         else
         {
             printf("Invalid flag: %s\n", argv[i]);
@@ -89,33 +93,23 @@ int main(int argc, char *argv[])
     }
 
     // verbose trace
-    if (verbose)
-    {
-        printf("Reading words in octal from stdin:\n");
-    }
+    if (verbose) printf("\nReading words in octal from stdin:\n");
 
     // Read words in octal from stdin
     char line[100];
     int i = 0;
     while (fgets(line, sizeof(line), stdin) != NULL)
     {
-        // Read in octal
+        // Read a word into every other memory location
         memory[i] = (uint16_t)strtol(line, NULL, 8);
 
         // verbose trace
-        if (verbose)
-        {
-            printf("%07o\n", memory[i]);
-        }
-
-        i++;
+        if (verbose) printf("%07o\n", memory[i]);
+        i += 2;
     }
 
     // instruction trace
-    if (trace || verbose)
-    {
-        printf("\ninstruction trace:\n");
-    }
+    if (trace || verbose) printf("\ninstruction trace:\n");
 
     // Set PC to 0
     reg[7] = 0;
@@ -123,78 +117,17 @@ int main(int argc, char *argv[])
     // Loop through memory
     while (reg[7] < MEMSIZE && running)
     {
-        if(trace || verbose)
-        {
-            printf("at %05o: ", reg[7]);
-        }
+        if(trace || verbose) printf("at %05o, ", reg[7]);
 
         // Get instruction from memory
-        uint16_t instruction = memory[reg[7]++];
+        uint16_t instruction = memory[reg[7]];
+        reg[7] += 2;
 
         #ifdef DEBUG
         printf("\nexecuting instruction %05o at address %05o\n", instruction, reg[7]-1);
         #endif
 
-        // Execute 4 bit opcode
-        if(((instruction & 0xF000) >> 12) == 01) // mov
-        {
-            mov(instruction);
-        }
-        else if(((instruction & 0xF000) >> 12) == 02) // cmp
-        {
-            cmp(instruction);
-        }
-        else if(((instruction & 0xF000) >> 12) == 06) // add
-        {
-            add(instruction);
-        }
-        else if(((instruction & 0xF000) >> 12) == 016) // sub
-        {
-            sub(instruction);
-        }
-
-        // Opcode is not 4 bits, try 7
-        else if(((instruction & 0xFE00) >> 9) == 077) // sob
-        {
-            sob(instruction);
-        }
-
-        // Opcode is not 7 bits, try 8
-        else if(((instruction & 0xFF00) >> 8) == 001) // br
-        {
-            br(instruction);
-        }
-        else if(((instruction & 0xFF00) >> 8) == 002) // bne
-        {
-            bne(instruction);
-        }
-        else if(((instruction & 0xFF00) >> 8) == 003) // beq
-        {
-            beq(instruction);
-        }
-
-        // Opcode is not 8 bits, try 10
-        else if(((instruction & 0xFFC0) >> 6) == 0062) // asr
-        {
-            asr(instruction);
-        }
-        else if(((instruction & 0xFFC0) >> 6) == 0063) // asl
-        {
-            asl(instruction);
-        }
-
-        // Opcode is not 10 bits, try 16
-        else if(instruction == 0000) // halt
-        {
-            halt(instruction);
-        }
-
-        // Invalid opcode
-        else
-        {
-            printf("Invalid opcode: %d\n", instruction);
-            exit(1);
-        }
+        operate(instruction);
 
         // ensure PC is not out of bounds
         if(reg[7] >= MEMSIZE)
@@ -205,23 +138,80 @@ int main(int argc, char *argv[])
     }
 
     // Print execution statistics
-    printf("\nexecution statistics (in decimal):\n");
-    printf("\tinstructions executed: %d\n", inst_execs);
-    printf("\tinstruction words fetched: %d\n", inst_fetches);
-    printf("\tdata words read: %d\n", memory_reads);
-    printf("\tdata words written: %d\n", memory_writes);
-    printf("\tbranches executed: %d\n", branch_execs);
-    printf("\tbranches taken: %d\n", branch_taken);
-
-    // Print first 20 words of memory after execution halts
-    printf("\nfirst 20 words of memory after execution halts:\n");
-    for(int i = 0; i < 20; i++)
-    {
-        printf("%05o: %07o\n", i, memory[i]);
-    }
+    pstats();
 }
 
 // Function definitions
+void operate(uint16_t instruction) {
+
+    // Execute 4 bit opcode
+    if(((instruction & 0xF000) >> 12) == 01) // mov
+    {
+        mov(instruction);
+    }
+    else if(((instruction & 0xF000) >> 12) == 02) // cmp
+    {
+        cmp(instruction);
+    }
+    else if(((instruction & 0xF000) >> 12) == 06) // add
+    {
+        add(instruction);
+    }
+    else if(((instruction & 0xF000) >> 12) == 016) // sub
+    {
+        sub(instruction);
+    }
+
+    // Opcode is not 4 bits, try 7
+    else if(((instruction & 0xFE00) >> 9) == 077) // sob
+    {
+        sob(instruction);
+    }
+
+    // Opcode is not 7 bits, try 8
+    else if(((instruction & 0xFF00) >> 8) == 001) // br
+    {
+        br(instruction);
+    }
+    else if(((instruction & 0xFF00) >> 8) == 002) // bne
+    {
+        bne(instruction);
+    }
+    else if(((instruction & 0xFF00) >> 8) == 003) // beq
+    {
+        beq(instruction);
+    }
+
+    // Opcode is not 8 bits, try 10
+    else if(((instruction & 0xFFC0) >> 6) == 0062) // asr
+    {
+        asr(instruction);
+    }
+    else if(((instruction & 0xFFC0) >> 6) == 0063) // asl
+    {
+        asl(instruction);
+    }
+
+    // Opcode is not 10 bits, try 16
+    else if(instruction == 0000) // halt
+    {
+        halt(instruction);
+    }
+
+    // Invalid opcode
+    else
+    {
+        printf("Invalid opcode: %d\n", instruction);
+        exit(1);
+    }
+
+    // Increment instruction execution count
+    inst_execs++;
+
+    // Increment instruction fetch count
+    inst_fetches++;
+}
+
 void get_operand( addr_phrase_t *phrase) {
     #ifdef DEBUG
     printf("get_operand: mode = %d, reg = %d\n", phrase->mode, phrase->reg);
@@ -262,7 +252,8 @@ void get_operand( addr_phrase_t *phrase) {
                 #endif
 
                 // Operand is in the next word
-                phrase->value = memory[reg[7]++];
+                phrase->value = memory[reg[7]];
+                reg[7] += 2;
                 assert( phrase->value < 0200000 );
                 inst_fetches++;
 
@@ -293,7 +284,9 @@ void get_operand( addr_phrase_t *phrase) {
                 #endif
 
                 // The address of the operand is in the next word
-                phrase->addr = memory[reg[7]++];
+                phrase->addr = memory[reg[7]];
+                reg[7] += 2;
+                assert( phrase->addr < 0200000 );
                 memory_reads++;
             }
 
@@ -346,14 +339,14 @@ void get_operand( addr_phrase_t *phrase) {
             if( phrase->reg == 7 ) { // Relative mode
                 // The address of the operand is in the next word of the instruction added to the PC
                 phrase->addr = memory[reg[7]] + reg[7];
-                reg[7]++;
+                reg[7] += 2;
                 assert( phrase->addr < 0200000 );
             }
 
             // Update register mode
             else {
                 phrase->addr = memory[reg[7]] + reg[phrase->reg];
-                reg[7]++;
+                reg[7] += 2;
                 assert( phrase->addr < 0200000 );
             }
 
@@ -373,16 +366,15 @@ void get_operand( addr_phrase_t *phrase) {
             if( phrase->reg == 7 ) { // Relative deferred mode
                 // The address of the address of the operand is the next word of the instruction added to reg[7]
                 phrase->addr = memory[reg[7]] + reg[7];
-                reg[7]++;
                 assert( phrase->addr < 0200000 );
             }
 
             // Update register mode
             else {
                 phrase->addr = memory[reg[7]] + reg[phrase->reg];
-                reg[7]++;
                 assert( phrase->addr < 0200000 );
             }
+            reg[7] += 2;
 
             // Get value from memory
             phrase->addr = memory[phrase->addr];
@@ -399,6 +391,73 @@ void get_operand( addr_phrase_t *phrase) {
         default:
             printf("unimplemented address mode %o\n", phrase->mode);
             exit(1);
+    }
+}
+
+void update_operand(addr_phrase_t *phrase) {
+    assert( (phrase->mode >= 0) && (phrase->mode <= 7) );
+    assert( (phrase->reg >= 0) && (phrase->reg <= 7) );
+
+    // Decide register mode
+    switch( phrase->mode ) {
+
+        /* register */
+        case 0:
+            reg[phrase->reg] = phrase->value;
+            break;
+
+        /* register indirect */
+        case 1:
+            memory[phrase->addr] = phrase->value;
+            memory_writes++;
+            break;
+
+        /* autoincrement (post reference) */
+        case 2:
+            // Update PC mode
+            if( phrase->reg == 7 ) { // Immediate mode
+                // Immediate mode has no address
+                // Do nothing
+            }
+            // Update register mode
+            else {
+                memory[phrase->addr] = phrase->value;
+                memory_writes++;
+            }
+            break;
+
+        /* autoincrement indirect */
+        case 3:
+            // Get value from memory
+            memory[phrase->addr] = phrase->value;
+            memory_writes++;
+            break;
+
+        /* autodecrement */
+        case 4:
+            memory[phrase->addr] = phrase->value;
+            memory_writes++;
+            break;
+
+        /* autodecrement indirect */
+        case 5:
+            memory[phrase->addr] = phrase->value;
+            memory_writes++;
+            break;
+
+        /* index */
+        case 6:
+            // Get value from memory
+            memory[phrase->addr] = phrase->value;
+            memory_writes++;
+            break;
+
+        /* index indirect */
+        case 7:
+            // Get value from memory
+            memory[phrase->addr] = phrase->value;
+            memory_writes++;
+            break;
     }
 }
 
@@ -422,8 +481,7 @@ void add(uint16_t operand)
     dst.value = dst.value + src.value;
 
     // Write back to memory
-    memory[dst.addr] = dst.value;
-    memory_writes++;
+    update_operand(&dst);
 
     // Set condition codes
     n = dst.value & 0x8000;
@@ -439,12 +497,12 @@ void add(uint16_t operand)
 
     // verbose
     if (verbose) {
-        printf("\tsrc.value = %07o\n\tdst.value = %07o\n\tresult = %07o\n", src.value, dst.value, dst.value);
-        printf("\tnzvc bits = 4'b%d%d%d%d\n", n, z, v, c);
+        printf("  src.value = %07o\n  dst.value = %07o\n  result = %07o\n", src.value, dst.value, dst.value);
+        printf("  nzvc bits = 4'b%d%d%d%d\n", n, z, v, c);
         
         // register dump
-        printf("\tR0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
-        printf("\tR1:%07o R3:%07o R5:%07o R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
+        printf("  R0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
+        printf("  R1:%07o R3:%07o R5:%07o R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
     }
 }
 
@@ -454,23 +512,29 @@ void asl(uint16_t operand)
     printf("----------asl: operand = %d----------\n", operand);
     #endif
 
-    // Get source and destination address phrases
-    src.mode = (operand & 0x0E00) >> 9;
-    src.reg = (operand & 0x01C0) >> 6;
+    // Get address phrase
     dst.mode = (operand & 0x0038) >> 3;
     dst.reg = (operand & 0x0007);
-
-    // Get source and destination values
-    get_operand(&src);
+    
+    // Get value
     get_operand(&dst);
     
+    // Save old value
+    uint16_t old_value = dst.value;
+
     // Shift left
-    memory[dst.addr] = dst.value << 1;
+    dst.value = dst.value << 1;
+
+    // Clamp to 16 bits
+    dst.value = dst.value & 0xFFFF;
+
+    // Write back to memory
+    update_operand(&dst);
 
     // Set condition codes
     n = dst.value & 0x8000;
     z = dst.value == 0;
-    v = (src.value & 0x8000) == (dst.value & 0x8000);
+    v = (old_value & 0x8000) != (dst.value & 0x8000);
     c = dst.value > 0xFFFF;
 
     // instruction trace
@@ -481,12 +545,12 @@ void asl(uint16_t operand)
 
     // value dump
     if (verbose) {
-        printf("\tdst.value = %07o\n\tresult = %07o\n", dst.value, memory[dst.addr]);
-        printf("\tnzvc bits = 4'b%d%d%d%d\n", n, z, v, c);
+        printf("  dst.value = %07o\n  result = %07o\n", old_value, dst.value);
+        printf("  nzvc bits = 4'b%d%d%d%d\n", n, z, v, c);
         
         // register dump
-        printf("\tR0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
-        printf("\tR1:%07o R3:%07o R5:%07o R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
+        printf("  R0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
+        printf("  R1:%07o R3:%07o R5:%07o R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
     }
 }
 
@@ -496,36 +560,32 @@ void asr(uint16_t operand)
     printf("----------asr: operand = %d----------\n", operand);
     #endif
 
-    // Get source and destination address phrases
-    src.mode = (operand & 0x0E00) >> 9;
-    src.reg = (operand & 0x01C0) >> 6;
+    // Get address phrase
     dst.mode = (operand & 0x0038) >> 3;
     dst.reg = (operand & 0x0007);
 
-    // Get source and destination values
-    get_operand(&src);
+    // Get value
     get_operand(&dst);
 
-    // Sign extend source value
-    if (src.value & 0x8000)
-    {
-        src.value |= 0xFFFF0000;
-    }
+    // Save old value
+    uint16_t old_value = dst.value;
 
-    // Shift destination right
-    dst.value = dst.value >> 1;
+    // Sign extend to 32 bits
+    int32_t dst_value = dst.value;
 
-    // Trim to 16 bits
-    dst.value &= 0xFFFF;
+    // Shift right
+    dst_value = dst_value >> 1;
+
+    // Clamp to 16 bits
+    dst.value = dst_value & 0xFFFF;
 
     // Write back to memory
-    memory[dst.addr] = dst.value;
-    memory_writes++;
+    update_operand(&dst);
 
     // Set condition codes
     n = dst.value & 0x8000;
     z = dst.value == 0;
-    v = (src.value & 0x8000) == (dst.value & 0x8000);
+    v = (old_value & 0x8000) != (dst.value & 0x8000);
     c = dst.value > 0xFFFF;
 
     // instruction trace
@@ -536,12 +596,12 @@ void asr(uint16_t operand)
 
     // value dump
     if (verbose) {
-        printf("\tdst.value = %07o\n\tresult = %07o\n", dst.value, memory[dst.addr]);
-        printf("\tnzvc bits = 4'b%d%d%d%d\n", n, z, v, c);
+        printf("  dst.value = %07o\n  result = %07o\n", old_value, dst.value);
+        printf("  nzvc bits = 4'b%d%d%d%d\n", n, z, v, c);
         
         // register dump
-        printf("\tR0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
-        printf("\tR1:%07o R3:%07o R5:%07o R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
+        printf("  R0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
+        printf("  R1:%07o R3:%07o R5:%07o R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
     }
 }
 
@@ -551,20 +611,12 @@ void beq(uint16_t operand)
     printf("----------beq: operand = %d----------\n", operand);
     #endif
 
-    // Get source and destination address phrases
-    src.mode = (operand & 0x0E00) >> 9;
-    src.reg = (operand & 0x01C0) >> 6;
-    dst.mode = (operand & 0x0038) >> 3;
-    dst.reg = (operand & 0x0007);
+    // Get 8 bit offset
+    int8_t offset = operand & 0x00FF;
 
-    // Get source and destination values
-    get_operand(&src);
-    get_operand(&dst);
-
-    // Branch if zero
-    if (z)
-    {
-        reg[7] = dst.value;
+    // Branch with offset if zero flag is set
+    if (z) {
+        reg[7] += offset;
     }
 
     // Update branches taken
@@ -578,8 +630,8 @@ void beq(uint16_t operand)
     // value dump
     if (verbose) {
         // register dump
-        printf("\tR0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
-        printf("\tR1:%07o R3:%07o R5:%07o R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
+        printf("  R0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
+        printf("  R1:%07o R3:%07o R5:%07o R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
     }
 }
 
@@ -589,26 +641,12 @@ void bne(uint16_t operand)
     printf("----------bne: operand = %d----------\n", operand);
     #endif
 
-    // Get source and destination address phrases
-    src.mode = (operand & 0x0E00) >> 9;
-    src.reg = (operand & 0x01C0) >> 6;
-    dst.mode = (operand & 0x0038) >> 3;
-    dst.reg = (operand & 0x0007);
+    // Get 8 bit offset
+    int8_t offset = operand & 0x00FF;
 
-    // Get source and destination values
-    get_operand(&src);
-    get_operand(&dst);
-
-    // Branch if not zero
-    if (!z)
-    {
-        reg[7] = reg[7] + 2 * dst.value;
-    }
-
-    // Validate PC
-    if (reg[7] > 0xFFFF)
-    {
-        reg[7] = reg[7] & 0xFFFF;
+    // Branch with offset if zero flag is not set
+    if (!z) {
+        reg[7] += offset;
     }
 
     // Update branches taken
@@ -622,8 +660,8 @@ void bne(uint16_t operand)
     // value dump
     if (verbose) {
         // register dump
-        printf("\tR0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
-        printf("\tR1:%07o R3:%07o R5:%07o R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
+        printf("  R0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
+        printf("  R1:%07o R3:%07o R5:%07o R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
     }
 }
 
@@ -633,18 +671,11 @@ void br(uint16_t operand)
     printf("----------br: operand = %d----------\n", operand);
     #endif
 
-    // Get source and destination address phrases
-    src.mode = (operand & 0x0E00) >> 9;
-    src.reg = (operand & 0x01C0) >> 6;
-    dst.mode = (operand & 0x0038) >> 3;
-    dst.reg = (operand & 0x0007);
+    // Get 8 bit offset
+    int8_t offset = operand & 0x00FF;
 
-    // Get source and destination values
-    get_operand(&src);
-    get_operand(&dst);
-
-    // Branch
-    reg[7] = reg[7] + 2 * dst.value;
+    // Branch with offset
+    reg[7] += offset;
 
     // Update branches taken
     branch_taken++;
@@ -657,8 +688,8 @@ void br(uint16_t operand)
     // value dump
     if (verbose) {
         // register dump
-        printf("\tR0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
-        printf("\tR1:%07o R3:%07o R5:%07o R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
+        printf("  R0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
+        printf("  R1:%07o R3:%07o R5:%07o R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
     }
 }
 
@@ -694,12 +725,12 @@ void cmp(uint16_t operand)
 
     // value dump
     if (verbose) {
-        printf("\tsrc.value = %07o\n\tdst.value = %07o\n\tresult = %07o\n", src.value, dst.value, result);
-        printf("\tnzvc bits = 4'b%d%d%d%d\n", n, z, v, c);
+        printf("  src.value = %07o\n  dst.value = %07o\n  result = %07o\n", src.value, dst.value, result);
+        printf("  nzvc bits = 4'b%d%d%d%d\n", n, z, v, c);
 
         // register dump
-        printf("\tR0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
-        printf("\tR1:%07o R3:%07o R5:%07o R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
+        printf("  R0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
+        printf("  R1:%07o R3:%07o R5:%07o R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
     }
 }
 
@@ -720,8 +751,8 @@ void halt(uint16_t operand)
     // value dump
     if (verbose) {
         // register dump
-        printf("\tR0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
-        printf("\tR1:%07o R3:%07o R5:%07o R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
+        printf("  R0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
+        printf("  R1:%07o R3:%07o R5:%07o R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
     }
 }
 
@@ -767,12 +798,12 @@ void mov(uint16_t operand)
     }
 
     if (verbose) {
-        printf("\tsrc.value = %07o\n", src.value);
-        printf("\tnzvc bits = 4'b%d%d%d%d\n", n, z, v, c);
+        printf("  src.value = %07o\n", src.value);
+        printf("  nzvc bits = 4'b%d%d%d%d\n", n, z, v, c);
         
         // register dump
-        printf("\tR0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
-        printf("\tR1:%07o R3:%07o R5:%07o R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
+        printf("  R0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
+        printf("  R1:%07o R3:%07o R5:%07o R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
     }
 }
 
@@ -782,29 +813,21 @@ void sob(uint16_t operand)
     printf("----------sob: operand = %d----------\n", operand); 
     #endif
 
-    // Get source and destination address phrases
-    src.mode = (operand & 0x0E00) >> 9;
-    src.reg = (operand & 0x01C0) >> 6;
-    dst.mode = (operand & 0x0038) >> 3;
-    dst.reg = (operand & 0x0007);
+    // Get register and offset
+    int regIndex = operand >> 6;
+    int8_t offset = operand & 0x003F;
 
-    // Get source and destination values
-    get_operand(&src);
-    get_operand(&dst);
+    // Subtract one from register
+    reg[regIndex]--;
 
-    // Subtract one
-    dst.value--;
-
-    // Update register
-    if (dst.mode == 0)
+    // Branch if register is not zero
+    if (reg[regIndex] != 0)
     {
-        reg[dst.reg] = dst.value;
-    }
+        // Branch with offset
+        reg[7] += offset;
 
-    // Update PC
-    if (dst.value != 0)
-    {
-        reg[7] = reg[7] - 2 * src.value;
+        // Update branches taken
+        branch_taken++;
     }
 
     // Set flags
@@ -821,12 +844,12 @@ void sob(uint16_t operand)
 
     // value dump
     if (verbose) {
-        printf("\tdst.value = %07o\n", dst.value);
-        printf("\tnzvc bits = 4'b%d%d%d%d\n", n, z, v, c);
+        printf("  dst.value = %07o\n", dst.value);
+        printf("  nzvc bits = 4'b%d%d%d%d\n", n, z, v, c);
         
         // register dump
-        printf("\tR0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
-        printf("\tR1:%07o R3:%07o R5:%07o R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
+        printf("  R0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
+        printf("  R1:%07o R3:%07o R5:%07o R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
     }
 }
 
@@ -867,11 +890,25 @@ void sub(uint16_t operand)
 
     // value dump
     if (verbose) {
-        printf("\tsrc.value = %07o\n\tdst.value = %07o\n\tresult = %07o\n", src.value, dst.value, result);
-        printf("\tnzvc bits = 4'b%d%d%d%d\n", n, z, v, c);
+        printf("  src.value = %07o\n  dst.value = %07o\n  result = %07o\n", src.value, dst.value, result);
+        printf("  nzvc bits = 4'b%d%d%d%d\n", n, z, v, c);
         
         // register dump
-        printf("\tR0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
-        printf("\tR1:%07o R3:%07o R5:%07o R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
+        printf("  R0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
+        printf("  R1:%07o R3:%07o R5:%07o R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
     }
+}
+
+void pstats() {
+    printf("\nexecution statistics (in decimal):\n");
+    printf("  instructions executed     = %d\n", inst_execs);
+    printf("  instruction words fetched = %d\n", inst_fetches);
+    printf("  data words read           = %d\n", memory_reads);
+    printf("  data words written        = %d\n", memory_writes);
+    printf("  branches executed         = %d\n", branch_execs);
+    printf("  branches taken            = %d\n", branch_taken);
+
+    // Print first 20 words of memory after execution halts
+    printf("\nfirst 20 words of memory after execution halts:\n");
+    for(int i = 0; i < 40; i += 2) printf("  %05o: %06o\n", i, memory[i]);
 }

@@ -6,16 +6,16 @@ CFLAGS = -g -Wall
 default:
 	$(CC) $(CFLAGS) $(SRCS) -lm
 
-test: a.out test.txt
+test: default
 	./a.out < test.txt
 
-trace:
+trace: default
 	./a.out -t < test.txt
 
-verbose:
+verbose: default
 	./a.out -v < test.txt
 
-tar:
+tar: clean
 	tar -czvf chkarts_project1.tar.gz $(TARFILES)
 
 clean:
