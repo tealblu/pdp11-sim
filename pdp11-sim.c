@@ -64,6 +64,7 @@ void mov(uint16_t operand);
 void sob(uint16_t operand);
 void sub(uint16_t operand);
 void pstats();
+void pregs();
 
 // Main function
 int main(int argc, char *argv[])
@@ -93,7 +94,7 @@ int main(int argc, char *argv[])
     }
 
     // verbose trace
-    if (verbose) printf("\nReading words in octal from stdin:\n");
+    if (verbose) printf("\nreading words in octal from stdin:\n");
 
     // Read words in octal from stdin
     char line[100];
@@ -104,7 +105,7 @@ int main(int argc, char *argv[])
         memory[i] = (uint16_t)strtol(line, NULL, 8);
 
         // verbose trace
-        if (verbose) printf("%07o\n", memory[i]);
+        if (verbose) printf("  %07o\n", memory[i]);
         i += 2;
     }
 
@@ -477,32 +478,37 @@ void add(uint16_t operand)
     get_operand(&src);
     get_operand(&dst);
 
+    // Save old value of destination
+    uint16_t old_dst = dst.value;
+
     // Add source and destination
     dst.value = dst.value + src.value;
+
+    // Ensure that the result is 16 bits
+    dst.value = dst.value & 0xFFFF;
 
     // Write back to memory
     update_operand(&dst);
 
     // Set condition codes
-    n = dst.value & 0x8000;
-    z = dst.value == 0;
-    v = (src.value & 0x8000) == (dst.value & 0x8000);
-    c = dst.value > 0xFFFF;
+    n = dst.value >> 15;
+    z = (dst.value == 0);
+    v = ((old_dst >> 15) == (src.value >> 15)) && ((dst.value >> 15) != (src.value >> 15));
+    c = (dst.value < old_dst);
 
     // instruction trace
     if (trace || verbose)
     {
-        printf("add instruction sm %o, sr %o, dm %o, dr %o\n", src.mode, src.reg, dst.mode, dst.reg);
+        printf("add instruction sm %o, sr %o dm %o dr %o\n", src.mode, src.reg, dst.mode, dst.reg);
     }
 
     // verbose
     if (verbose) {
-        printf("  src.value = %07o\n  dst.value = %07o\n  result = %07o\n", src.value, dst.value, dst.value);
+        printf("  src.value = %07o\n  dst.value = %07o\n  result    = %07o\n", src.value, old_dst, dst.value);
         printf("  nzvc bits = 4'b%d%d%d%d\n", n, z, v, c);
         
         // register dump
-        printf("  R0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
-        printf("  R1:%07o R3:%07o R5:%07o R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
+        pregs();
     }
 }
 
@@ -535,22 +541,21 @@ void asl(uint16_t operand)
     n = dst.value & 0x8000;
     z = dst.value == 0;
     v = (old_value & 0x8000) != (dst.value & 0x8000);
-    c = dst.value > 0xFFFF;
+    c = (old_value & 0x8000) != 0;
 
     // instruction trace
     if (trace || verbose)
     {
-        printf("asl instruction dm %o, dr %o\n", dst.mode, dst.reg);
+        printf("asl instruction dm %o dr %o\n", dst.mode, dst.reg);
     }
 
     // value dump
     if (verbose) {
-        printf("  dst.value = %07o\n  result = %07o\n", old_value, dst.value);
+        printf("  dst.value = %07o\n  result    = %07o\n", old_value, dst.value);
         printf("  nzvc bits = 4'b%d%d%d%d\n", n, z, v, c);
         
         // register dump
-        printf("  R0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
-        printf("  R1:%07o R3:%07o R5:%07o R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
+        pregs();
     }
 }
 
@@ -570,14 +575,14 @@ void asr(uint16_t operand)
     // Save old value
     uint16_t old_value = dst.value;
 
-    // Sign extend to 32 bits
-    int32_t dst_value = dst.value;
+    // Copy sign bit
+    uint16_t sign_bit = dst.value & 0x8000;
 
     // Shift right
-    dst_value = dst_value >> 1;
+    dst.value = dst.value >> 1;
 
-    // Clamp to 16 bits
-    dst.value = dst_value & 0xFFFF;
+    // Write sign bit
+    dst.value = dst.value | sign_bit;
 
     // Write back to memory
     update_operand(&dst);
@@ -586,22 +591,21 @@ void asr(uint16_t operand)
     n = dst.value & 0x8000;
     z = dst.value == 0;
     v = (old_value & 0x8000) != (dst.value & 0x8000);
-    c = dst.value > 0xFFFF;
+    c = (old_value & 0x0001) != 0;
 
     // instruction trace
     if (trace || verbose)
     {
-        printf("asr instruction dm %o, dr %o\n", dst.mode, dst.reg);
+        printf("asr instruction dm %o dr %o\n", dst.mode, dst.reg);
     }
 
     // value dump
     if (verbose) {
-        printf("  dst.value = %07o\n  result = %07o\n", old_value, dst.value);
+        printf("  dst.value = %07o\n  result    = %07o\n", old_value, dst.value);
         printf("  nzvc bits = 4'b%d%d%d%d\n", n, z, v, c);
         
         // register dump
-        printf("  R0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
-        printf("  R1:%07o R3:%07o R5:%07o R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
+        pregs();
     }
 }
 
@@ -630,8 +634,7 @@ void beq(uint16_t operand)
     // value dump
     if (verbose) {
         // register dump
-        printf("  R0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
-        printf("  R1:%07o R3:%07o R5:%07o R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
+        pregs();
     }
 }
 
@@ -660,8 +663,7 @@ void bne(uint16_t operand)
     // value dump
     if (verbose) {
         // register dump
-        printf("  R0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
-        printf("  R1:%07o R3:%07o R5:%07o R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
+        pregs();
     }
 }
 
@@ -688,8 +690,7 @@ void br(uint16_t operand)
     // value dump
     if (verbose) {
         // register dump
-        printf("  R0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
-        printf("  R1:%07o R3:%07o R5:%07o R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
+        pregs();
     }
 }
 
@@ -729,8 +730,7 @@ void cmp(uint16_t operand)
         printf("  nzvc bits = 4'b%d%d%d%d\n", n, z, v, c);
 
         // register dump
-        printf("  R0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
-        printf("  R1:%07o R3:%07o R5:%07o R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
+        pregs();
     }
 }
 
@@ -751,8 +751,7 @@ void halt(uint16_t operand)
     // value dump
     if (verbose) {
         // register dump
-        printf("  R0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
-        printf("  R1:%07o R3:%07o R5:%07o R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
+        pregs();
     }
 }
 
@@ -794,7 +793,7 @@ void mov(uint16_t operand)
     // instruction trace
     if (trace || verbose)
     {
-        printf("mov instruction sm %o, sr %o, dm %o, dr %o\n", src.mode, src.reg, dst.mode, dst.reg);
+        printf("mov instruction sm %o, sr %o dm %o dr %o\n", src.mode, src.reg, dst.mode, dst.reg);
     }
 
     if (verbose) {
@@ -802,8 +801,7 @@ void mov(uint16_t operand)
         printf("  nzvc bits = 4'b%d%d%d%d\n", n, z, v, c);
         
         // register dump
-        printf("  R0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
-        printf("  R1:%07o R3:%07o R5:%07o R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
+        pregs();
     }
 }
 
@@ -839,7 +837,7 @@ void sob(uint16_t operand)
     // instruction trace
     if (trace || verbose)
     {
-        printf("sob instruction sm %o, sr %o, dm %o, dr %o\n", src.mode, src.reg, dst.mode, dst.reg);
+        printf("sob instruction sm %o, sr %o dm %o dr %o\n", src.mode, src.reg, dst.mode, dst.reg);
     }
 
     // value dump
@@ -848,8 +846,7 @@ void sob(uint16_t operand)
         printf("  nzvc bits = 4'b%d%d%d%d\n", n, z, v, c);
         
         // register dump
-        printf("  R0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
-        printf("  R1:%07o R3:%07o R5:%07o R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
+        pregs();
     }
 }
 
@@ -870,7 +867,7 @@ void sub(uint16_t operand)
     get_operand(&dst);
 
     // Subtract
-    int result = dst.value - src.value;
+    uint16_t result = dst.value - src.value;
 
     // Store destination value in memory or register
     if (dst.mode == 0)
@@ -882,20 +879,25 @@ void sub(uint16_t operand)
         memory[dst.value] = result;
     }
 
+    // Set flags
+    n = (result & 0x8000) >> 15;
+    z = (result == 0);
+    v = ((dst.value & 0x8000) >> 15) ^ ((src.value & 0x8000) >> 15) ^ ((result & 0x8000) >> 15);
+    c = ((dst.value & 0x8000) >> 15) ^ ((src.value & 0x8000) >> 15) ^ ((result & 0x8000) >> 15);
+
     // instruction trace
     if (trace || verbose)
     {
-        printf("sub instruction sm %o, sr %o, dm %o, dr %o\n", src.mode, src.reg, dst.mode, dst.reg);
+        printf("sub instruction sm %o, sr %o dm %o dr %o\n", src.mode, src.reg, dst.mode, dst.reg);
     }
 
     // value dump
     if (verbose) {
-        printf("  src.value = %07o\n  dst.value = %07o\n  result = %07o\n", src.value, dst.value, result);
+        printf("  src.value = %07o\n  dst.value = %07o\n  result    = %07o\n", src.value, dst.value, result);
         printf("  nzvc bits = 4'b%d%d%d%d\n", n, z, v, c);
         
         // register dump
-        printf("  R0:%07o R2:%07o R4:%07o R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
-        printf("  R1:%07o R3:%07o R5:%07o R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
+        pregs();
     }
 }
 
@@ -911,4 +913,9 @@ void pstats() {
     // Print first 20 words of memory after execution halts
     printf("\nfirst 20 words of memory after execution halts:\n");
     for(int i = 0; i < 40; i += 2) printf("  %05o: %06o\n", i, memory[i]);
+}
+
+void pregs() {
+    printf("  R0:%07o  R2:%07o  R4:%07o  R6:%07o\n", reg[0], reg[2], reg[4], reg[6]);
+    printf("  R1:%07o  R3:%07o  R5:%07o  R7:%07o\n", reg[1], reg[3], reg[5], reg[7]);
 }
