@@ -234,6 +234,7 @@ void get_operand( addr_phrase_t *phrase) {
         case 1:
             phrase->addr = reg[phrase->reg ];  /* address is in the register */
             assert( phrase->addr < MEMSIZE );
+
             phrase->value = memory[phrase->addr ];  /* value is in memory */
             memory_reads++;
             assert( phrase->value < 0200000 );
@@ -251,24 +252,20 @@ void get_operand( addr_phrase_t *phrase) {
                 printf("get_operand: immediate mode\n");
                 #endif
 
-                // Operand is in the next word
-                phrase->value = memory[reg[7]];
+                // Operand is in the next word in memory
+                phrase->addr = reg[phrase->reg];
                 inst_fetches++;
                 reg[7] += 2;
                 assert( phrase->value < 0200000 );
-
-                // Immediate mode has no address
-                phrase->addr = 0;
             }
             // Update register mode
             else {
                 phrase->addr = reg[phrase->reg];  /* address is in the register */
                 assert( phrase->addr < MEMSIZE );
-                phrase->value = memory[phrase->addr];  /* value is in memory */
-                memory_reads++;
-                assert( phrase->value < 0200000 );
                 reg[phrase->reg] += 2;  /* increment the register */
             }
+
+            phrase->value = memory[phrase->addr];  /* value is in memory */
 
             #ifdef DEBUG
             printf("get_operand: addr: %07o, value: %07o\n", phrase->addr, phrase->value);
@@ -285,10 +282,11 @@ void get_operand( addr_phrase_t *phrase) {
 
                 // The address of the operand is in the next word
                 phrase->addr = memory[reg[7]];
-                memory_reads++;
                 inst_fetches++;
                 reg[7] += 2;
                 assert( phrase->addr < MEMSIZE );
+
+                memory_reads++;
             }
 
             // Update register mode
@@ -296,13 +294,13 @@ void get_operand( addr_phrase_t *phrase) {
                 phrase->addr = reg[phrase->reg];  /* address is in the register */
                 assert( phrase->addr < MEMSIZE );
                 phrase->addr = memory[phrase->addr];  /* address is in memory */
-                memory_reads++;
                 assert( phrase->addr < MEMSIZE );
+
+                memory_reads += 2;
             }
 
             // The value of the operand is in memory
             phrase->value = memory[phrase->addr];
-            memory_reads++;
             assert( phrase->value < 0200000 );
 
             // Increment the register
@@ -318,6 +316,7 @@ void get_operand( addr_phrase_t *phrase) {
             reg[phrase->reg] -= 2;  /* decrement the register */
             phrase->addr = reg[phrase->reg];  /* address is in the register */
             assert( phrase->addr < MEMSIZE );
+
             phrase->value = memory[phrase->addr];  /* value is in memory */
             memory_reads++;
             assert( phrase->value < 0200000 );
@@ -331,6 +330,7 @@ void get_operand( addr_phrase_t *phrase) {
             phrase->addr = memory[phrase->addr];  /* address is in memory */
             memory_reads++;
             assert( phrase->addr < MEMSIZE );
+            
             phrase->value = memory[phrase->addr];  /* value is in memory */
             memory_reads++;
 
@@ -360,7 +360,7 @@ void get_operand( addr_phrase_t *phrase) {
 
             // Get value from memory
             phrase->value = memory[phrase->addr];
-            memory_reads++;
+            memory_reads += 2;
             assert( phrase->value < 0200000 );
 
             #ifdef DEBUG
@@ -392,10 +392,9 @@ void get_operand( addr_phrase_t *phrase) {
 
             // Get value from memory
             phrase->addr = memory[phrase->addr];
-            memory_reads++;
             assert( phrase->addr < MEMSIZE );
             phrase->value = memory[phrase->addr];
-            memory_reads++;
+            memory_reads += 2;
             assert( phrase->value < 0200000 );
 
             #ifdef DEBUG
@@ -674,7 +673,7 @@ void asr(uint16_t operand)
     // Set condition codes
     n = dst.value & 0x8000;
     z = dst.value == 0;
-    v = (old_value & 0x8000) != (dst.value & 0x8000);
+    v = ((old_value & 0x8000) && ((old_value & 0x0001) == 0)) || (!(old_value & 0x8000) && (old_value & 0x0001));
     c = (old_value & 0x0001) != 0;
 
     // instruction trace
@@ -715,6 +714,9 @@ void beq(uint16_t operand)
 
     branch_execs++;
 
+    // clamp offset for printing
+    offset = offset & 0xFF;
+
     // instruction trace
     if (trace || verbose) {
         printf("beq instruction with offset %04o\n", offset);
@@ -748,6 +750,9 @@ void bne(uint16_t operand)
     } 
 
     branch_execs++;
+
+    // clamp offset for printing
+    offset = offset & 0xFF;
 
     // instruction trace
     if (trace || verbose) {
@@ -866,20 +871,12 @@ void mov(uint16_t operand)
     // Move
     dst.value = src.value;
 
-    // If moving byte to register, sign extend into bits 15-8
-    if (dst.mode == 0 && dst.reg > 0) {
-        dst.value = dst.value & 0x00FF;
-        if (dst.value & 0x0080) {
-            dst.value = dst.value | 0xFF00;
-        }
-    }
-
     // Store destination value in memory or register
     put_operand(&dst);
 
     // Set flags
-    n = (dst.value & 0x8000) >> 15;
-    z = (dst.value == 0);
+    n = dst.value & 0x8000;
+    z = dst.value == 0;
     v = 0;
     c = 0;
 
@@ -892,6 +889,11 @@ void mov(uint16_t operand)
     if (verbose) {
         printf("  src.value = %07o\n", src.value);
         printf("  nzvc bits = 4'b%d%d%d%d\n", n, z, v, c);
+
+        // if value is written to memory, print
+        if (dst.mode == 2 || dst.mode == 3) {
+            printf("  value %07o is written to %07o\n", dst.value, dst.addr);
+        }
         
         // register dump
         pregs();
@@ -969,10 +971,10 @@ void sub(uint16_t operand)
     }
 
     // Set flags
-    n = (result & 0x8000) >> 15;
-    z = (result == 0);
-    v = ((dst.value & 0x8000) >> 15) ^ ((src.value & 0x8000) >> 15) ^ ((result & 0x8000) >> 15);
-    c = ((dst.value & 0x8000) >> 15) ^ ((src.value & 0x8000) >> 15) ^ ((result & 0x8000) >> 15);
+    n = result & 0x8000;
+    z = result == 0;
+    v = (src.value & 0x8000) != (dst.value & 0x8000);
+    c = src.value > dst.value;
 
     // instruction trace
     if (trace || verbose)
@@ -997,7 +999,13 @@ void pstats() {
     printf("  data words read           = %d\n", memory_reads);
     printf("  data words written        = %d\n", memory_writes);
     printf("  branches executed         = %d\n", branch_execs);
-    printf("  branches taken            = %d (%0.1f%%)\n", branch_taken, (float) ((branch_taken * 100) / branch_execs));
+
+    // avoid dividing by zero
+    if (branch_execs == 0) {
+        printf("  branches taken            = %d\n", branch_taken);
+    } else {
+        printf("  branches taken            = %d (%0.1f%%)\n", branch_taken, (float) (branch_taken * 100) / branch_execs);
+    }
 
     // Print first 20 words of memory after execution halts
     printf("\nfirst 20 words of memory after execution halts:\n");
