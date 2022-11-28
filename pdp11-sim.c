@@ -21,7 +21,7 @@
 #include <assert.h>
 
 // Defines
-#define MEMSIZE 32*1024
+#define MEMSIZE (32*1024)
 
 /* struct top help organize source and destination operand handling */
 typedef struct ap {
@@ -52,6 +52,7 @@ int branch_execs = 0;
 void operate(uint16_t instruction);
 void get_operand(addr_phrase_t *phrase);
 void update_operand(addr_phrase_t *phrase);
+void put_operand(addr_phrase_t *phrase);
 void add(uint16_t operand);
 void asl(uint16_t operand);
 void asr(uint16_t operand);
@@ -173,14 +174,17 @@ void operate(uint16_t instruction) {
     else if(((instruction & 0xFF00) >> 8) == 001) // br
     {
         br(instruction);
+        branch_execs++;
     }
     else if(((instruction & 0xFF00) >> 8) == 002) // bne
     {
         bne(instruction);
+        branch_execs++;
     }
     else if(((instruction & 0xFF00) >> 8) == 003) // beq
     {
         beq(instruction);
+        branch_execs++;
     }
 
     // Opcode is not 8 bits, try 10
@@ -226,18 +230,16 @@ void get_operand( addr_phrase_t *phrase) {
 
         /* register */
         case 0:
-            phrase->value = reg[phrase->reg];  /*value is in the register */
-            assert( phrase->value < 0200000 );
-            phrase->addr = 0; /* unused */
+            phrase->value = reg[phrase->reg];
             break;
 
         /* register indirect */
         case 1:
             phrase->addr = reg[phrase->reg ];  /* address is in the register */
-            assert( phrase->addr < 0200000 );
+            assert( phrase->addr < MEMSIZE );
             phrase->value = memory[phrase->addr ];  /* value is in memory */
-            assert( phrase->value < 0200000 );
             memory_reads++;
+            assert( phrase->value < 0200000 );
 
             #ifdef DEBUG
             printf("get_operand: addr: %07o, value: %07o\n", phrase->addr, phrase->value);
@@ -254,9 +256,9 @@ void get_operand( addr_phrase_t *phrase) {
 
                 // Operand is in the next word
                 phrase->value = memory[reg[7]];
+                inst_fetches++;
                 reg[7] += 2;
                 assert( phrase->value < 0200000 );
-                inst_fetches++;
 
                 // Immediate mode has no address
                 phrase->addr = 0;
@@ -264,11 +266,11 @@ void get_operand( addr_phrase_t *phrase) {
             // Update register mode
             else {
                 phrase->addr = reg[phrase->reg];  /* address is in the register */
-                assert( phrase->addr < 0200000 );
+                assert( phrase->addr < MEMSIZE );
                 phrase->value = memory[phrase->addr];  /* value is in memory */
-                assert( phrase->value < 0200000 );
                 memory_reads++;
-                reg[phrase->reg]++;  /* increment the register */
+                assert( phrase->value < 0200000 );
+                reg[phrase->reg] += 2;  /* increment the register */
             }
 
             #ifdef DEBUG
@@ -286,22 +288,28 @@ void get_operand( addr_phrase_t *phrase) {
 
                 // The address of the operand is in the next word
                 phrase->addr = memory[reg[7]];
-                reg[7] += 2;
-                assert( phrase->addr < 0200000 );
                 memory_reads++;
+                inst_fetches++;
+                reg[7] += 2;
+                assert( phrase->addr < MEMSIZE );
             }
 
             // Update register mode
             else {
-                phrase->addr = reg[phrase->reg ];  /* address is in the register */
-                assert( phrase->addr < 0200000 );
-                reg[phrase->reg ]++;  /* increment the register */
+                phrase->addr = reg[phrase->reg];  /* address is in the register */
+                assert( phrase->addr < MEMSIZE );
+                phrase->addr = memory[phrase->addr];  /* address is in memory */
+                memory_reads++;
+                assert( phrase->addr < MEMSIZE );
             }
 
-            // Get value from memory
+            // The value of the operand is in memory
             phrase->value = memory[phrase->addr];
-            assert( phrase->value < 0200000 );
             memory_reads++;
+            assert( phrase->value < 0200000 );
+
+            // Increment the register
+            reg[phrase->reg] += 2;
 
             #ifdef DEBUG
             printf("get_operand: addr: %07o, value: %07o\n", phrase->addr, phrase->value);
@@ -310,23 +318,23 @@ void get_operand( addr_phrase_t *phrase) {
 
         /* autodecrement */
         case 4:
-            reg[ phrase->reg ] = ( reg[ phrase->reg ] - 2 ) & 0177777;
-            phrase->addr = reg[ phrase->reg ]; /* address is in the register */
-            assert( phrase->addr < 0200000 );
-            phrase->value = memory[ phrase->addr >> 1 ]; /* adjust to word addr */
-            assert( phrase->value < 0200000 );
+            reg[phrase->reg] -= 2;  /* decrement the register */
+            phrase->addr = reg[phrase->reg];  /* address is in the register */
+            assert( phrase->addr < MEMSIZE );
+            phrase->value = memory[phrase->addr];  /* value is in memory */
             memory_reads++;
+            assert( phrase->value < 0200000 );
             break;
 
         /* autodecrement indirect */
         case 5:
-            reg[ phrase->reg ] = ( reg[ phrase->reg ] - 2 ) & 0177777;
-            phrase->addr = reg[ phrase->reg ]; /* addr of addur is in reg */
-            assert( phrase->addr < 0200000 );
-            phrase->addr = memory[ phrase->addr >> 1 ]; /* adjust to word addr */
-            assert( phrase->addr < 0200000 );
-            phrase->value = memory[ phrase->addr >> 1 ]; /* adjust to word addr */
-            assert( phrase->value < 0200000 );
+            reg[phrase->reg] -= 2;  /* decrement the register */
+            phrase->addr = reg[phrase->reg];  /* address is in the register */
+            assert( phrase->addr < MEMSIZE );
+            phrase->addr = memory[phrase->addr];  /* address is in memory */
+            memory_reads++;
+            assert( phrase->addr < MEMSIZE );
+            phrase->value = memory[phrase->addr];  /* value is in memory */
             memory_reads++;
 
             #ifdef DEBUG
@@ -340,21 +348,23 @@ void get_operand( addr_phrase_t *phrase) {
             if( phrase->reg == 7 ) { // Relative mode
                 // The address of the operand is in the next word of the instruction added to the PC
                 phrase->addr = memory[reg[7]] + reg[7];
+                inst_fetches++;
                 reg[7] += 2;
-                assert( phrase->addr < 0200000 );
+                assert( phrase->addr < MEMSIZE );
             }
 
             // Update register mode
             else {
                 phrase->addr = memory[reg[7]] + reg[phrase->reg];
+                inst_fetches++;
                 reg[7] += 2;
-                assert( phrase->addr < 0200000 );
+                assert( phrase->addr < MEMSIZE );
             }
 
             // Get value from memory
             phrase->value = memory[phrase->addr];
-            assert( phrase->value < 0200000 );
             memory_reads++;
+            assert( phrase->value < 0200000 );
 
             #ifdef DEBUG
             printf("get_operand: addr: %07o, value: %07o\n", phrase->addr, phrase->value);
@@ -367,22 +377,29 @@ void get_operand( addr_phrase_t *phrase) {
             if( phrase->reg == 7 ) { // Relative deferred mode
                 // The address of the address of the operand is the next word of the instruction added to reg[7]
                 phrase->addr = memory[reg[7]] + reg[7];
-                assert( phrase->addr < 0200000 );
+                inst_fetches++;
+                assert( phrase->addr < MEMSIZE );
             }
 
             // Update register mode
             else {
                 phrase->addr = memory[reg[7]] + reg[phrase->reg];
-                assert( phrase->addr < 0200000 );
+                inst_fetches++;
+                // Fix out of bounds addresses
+                while( phrase->addr >= MEMSIZE ) {
+                    phrase->addr -= MEMSIZE;
+                }
+                assert( phrase->addr < MEMSIZE );
             }
             reg[7] += 2;
 
             // Get value from memory
             phrase->addr = memory[phrase->addr];
-            assert( phrase->addr < 0200000 );
-            phrase->value = memory[phrase->addr];
-            assert( phrase->value < 0200000 );
             memory_reads++;
+            assert( phrase->addr < MEMSIZE );
+            phrase->value = memory[phrase->addr];
+            memory_reads++;
+            assert( phrase->value < 0200000 );
 
             #ifdef DEBUG
             printf("get_operand: addr: %07o, value: %07o\n", phrase->addr, phrase->value);
@@ -396,6 +413,73 @@ void get_operand( addr_phrase_t *phrase) {
 }
 
 void update_operand(addr_phrase_t *phrase) {
+    assert( (phrase->mode >= 0) && (phrase->mode <= 7) );
+    assert( (phrase->reg >= 0) && (phrase->reg <= 7) );
+
+    // Decide register mode
+    switch( phrase->mode ) {
+
+        /* register */
+        case 0:
+            reg[phrase->reg] = phrase->value;
+            break;
+
+        /* register indirect */
+        case 1:
+            memory[phrase->addr] = phrase->value;
+            memory_writes++;
+            break;
+
+        /* autoincrement (post reference) */
+        case 2:
+            // Update PC mode
+            if( phrase->reg == 7 ) { // Immediate mode
+                // Immediate mode has no address
+                // Do nothing
+            }
+            // Update register mode
+            else {
+                memory[phrase->addr] = phrase->value;
+                memory_writes++;
+            }
+            break;
+
+        /* autoincrement indirect */
+        case 3:
+            // Get value from memory
+            memory[phrase->addr] = phrase->value;
+            memory_writes++;
+            break;
+
+        /* autodecrement */
+        case 4:
+            memory[phrase->addr] = phrase->value;
+            memory_writes++;
+            break;
+
+        /* autodecrement indirect */
+        case 5:
+            memory[phrase->addr] = phrase->value;
+            memory_writes++;
+            break;
+
+        /* index */
+        case 6:
+            // Get value from memory
+            memory[phrase->addr] = phrase->value;
+            memory_writes++;
+            break;
+
+        /* index indirect */
+        case 7:
+            // Get value from memory
+            memory[phrase->addr] = phrase->value;
+            memory_writes++;
+            break;
+    }
+}
+
+void put_operand(addr_phrase_t *phrase) {
     assert( (phrase->mode >= 0) && (phrase->mode <= 7) );
     assert( (phrase->reg >= 0) && (phrase->reg <= 7) );
 
@@ -584,6 +668,9 @@ void asr(uint16_t operand)
     // Write sign bit
     dst.value = dst.value | sign_bit;
 
+    // Ensure that the result is 16 bits
+    dst.value = dst.value & 0xFFFF;
+
     // Write back to memory
     update_operand(&dst);
 
@@ -672,19 +759,16 @@ void br(uint16_t operand)
     #ifdef DEBUG
     printf("----------br: operand = %d----------\n", operand);
     #endif
-
+    
     // Get 8 bit offset
-    int8_t offset = operand & 0x00FF;
-
-    // Branch with offset
-    reg[7] += offset;
+    reg[7] += 2 * (int8_t)operand;
 
     // Update branches taken
     branch_taken++;
 
     // instruction trace
     if (trace || verbose) {
-        printf("br instruction with offset %04o\n", dst.value);
+        printf("br instruction with offset %04o\n", (int8_t) operand);
     }
 
     // value dump
@@ -774,15 +858,16 @@ void mov(uint16_t operand)
     // Move
     dst.value = src.value;
 
+    // If moving byte to register, sign extend into bits 15-8
+    if (dst.mode == 0 && dst.reg > 0) {
+        dst.value = dst.value & 0x00FF;
+        if (dst.value & 0x0080) {
+            dst.value = dst.value | 0xFF00;
+        }
+    }
+
     // Store destination value in memory or register
-    if (dst.mode == 0)
-    {
-        reg[dst.reg] = dst.value;
-    }
-    else
-    {
-        memory[dst.value] = dst.value;
-    }
+    put_operand(&dst);
 
     // Set flags
     n = (dst.value & 0x8000) >> 15;
@@ -869,6 +954,9 @@ void sub(uint16_t operand)
     // Subtract
     uint16_t result = dst.value - src.value;
 
+    // Ensure result is 16 bits
+    result &= 0xFFFF;
+
     // Store destination value in memory or register
     if (dst.mode == 0)
     {
@@ -908,7 +996,7 @@ void pstats() {
     printf("  data words read           = %d\n", memory_reads);
     printf("  data words written        = %d\n", memory_writes);
     printf("  branches executed         = %d\n", branch_execs);
-    printf("  branches taken            = %d\n", branch_taken);
+    printf("  branches taken            = %d (%0.1f%%)\n", branch_taken, (float) ((branch_taken * 100) / branch_execs));
 
     // Print first 20 words of memory after execution halts
     printf("\nfirst 20 words of memory after execution halts:\n");
