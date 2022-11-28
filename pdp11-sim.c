@@ -174,17 +174,14 @@ void operate(uint16_t instruction) {
     else if(((instruction & 0xFF00) >> 8) == 001) // br
     {
         br(instruction);
-        branch_execs++;
     }
     else if(((instruction & 0xFF00) >> 8) == 002) // bne
     {
         bne(instruction);
-        branch_execs++;
     }
     else if(((instruction & 0xFF00) >> 8) == 003) // beq
     {
         beq(instruction);
-        branch_execs++;
     }
 
     // Opcode is not 8 bits, try 10
@@ -702,20 +699,25 @@ void beq(uint16_t operand)
     printf("----------beq: operand = %d----------\n", operand);
     #endif
 
-    // Get 8 bit offset
-    int8_t offset = operand & 0x00FF;
+    int offset = operand & 0377;          /* 8-bit signed offset */ 
 
-    // Branch with offset if zero flag is set
-    if (z) {
-        reg[7] += offset;
+    offset = offset << 24;       /* sign extend to 32 bits */ 
+    offset = offset >> 24; 
+
+    #ifdef DEBUG
+    printf("operand: %o, offset: %o\n", operand, offset);
+    #endif
+
+    if(z){ 
+        reg[7] = (reg[7] + (offset << 1)) & 0177777; 
+        branch_taken++; 
     }
 
-    // Update branches taken
-    branch_taken++;
+    branch_execs++;
 
     // instruction trace
     if (trace || verbose) {
-        printf("beq instruction with offset: %04o\n", dst.value);
+        printf("beq instruction with offset %04o\n", offset);
     }
 
     // value dump
@@ -731,20 +733,25 @@ void bne(uint16_t operand)
     printf("----------bne: operand = %d----------\n", operand);
     #endif
 
-    // Get 8 bit offset
-    int8_t offset = operand & 0x00FF;
+    int offset = operand & 0377;          /* 8-bit signed offset */ 
 
-    // Branch with offset if zero flag is not set
-    if (!z) {
-        reg[7] += offset;
-    }
+    offset = offset << 24;       /* sign extend to 32 bits */ 
+    offset = offset >> 24; 
 
-    // Update branches taken
-    branch_taken++;
+    #ifdef DEBUG
+    printf("operand: %o, offset: %o\n", operand, offset);
+    #endif
+
+    if(!z){ 
+        reg[7] = (reg[7] + (offset << 1)) & 0177777; 
+        branch_taken++; 
+    } 
+
+    branch_execs++;
 
     // instruction trace
     if (trace || verbose) {
-        printf("bne instruction with offset %04o\n", dst.value);
+        printf("bne instruction with offset 0%03o\n", offset);
     }
 
     // value dump
@@ -765,6 +772,7 @@ void br(uint16_t operand)
 
     // Update branches taken
     branch_taken++;
+    branch_execs++;
 
     // instruction trace
     if (trace || verbose) {
@@ -795,22 +803,22 @@ void cmp(uint16_t operand)
     get_operand(&dst);
 
     // Compare
-    int result = dst.value - src.value;
+    uint16_t result = src.value - dst.value;
 
     // Set flags
-    n = (result & 0x8000) >> 15;
-    z = (result == 0);
-    v = ((dst.value & 0x8000) >> 15) ^ ((src.value & 0x8000) >> 15) ^ ((result & 0x8000) >> 15);
-    c = ((dst.value & 0x8000) >> 15) ^ ((src.value & 0x8000) >> 15) ^ ((result & 0x8000) >> 15);
+    n = result & 0x8000;
+    z = result == 0;
+    v = (src.value & 0x8000) != (dst.value & 0x8000);
+    c = (src.value < dst.value);
 
     // instruction trace
     if (trace || verbose) {
-        printf("cmp instruction sm %o, sr %o, dm %o, dr %o\n", src.mode, src.reg, dst.mode, dst.reg);
+        printf("cmp instruction sm %o, sr %o dm %o dr %o\n", src.mode, src.reg, dst.mode, dst.reg);
     }
 
     // value dump
     if (verbose) {
-        printf("  src.value = %07o\n  dst.value = %07o\n  result = %07o\n", src.value, dst.value, result);
+        printf("  src.value = %07o\n  dst.value = %07o\n  result    = %07o\n", src.value, dst.value, result);
         printf("  nzvc bits = 4'b%d%d%d%d\n", n, z, v, c);
 
         // register dump
@@ -896,40 +904,33 @@ void sob(uint16_t operand)
     printf("----------sob: operand = %d----------\n", operand); 
     #endif
 
-    // Get register and offset
-    int regIndex = operand >> 6;
-    int8_t offset = operand & 0x003F;
+    // Get register index
+    int reg_index = operand & 0x0007;
+    
+    // Get 6 bit offset
+    int offset = operand & 0x003F;
 
     // Subtract one from register
-    reg[regIndex]--;
+    reg[reg_index]--;
 
     // Branch if register is not zero
-    if (reg[regIndex] != 0)
+    if (reg[reg_index] != 0)
     {
-        // Branch with offset
-        reg[7] += offset;
-
-        // Update branches taken
+        reg[7] -= 2 * offset;
         branch_taken++;
     }
 
-    // Set flags
-    n = (dst.value & 0x8000) >> 15;
-    z = (dst.value == 0);
-    v = 0;
-    c = 0;
+    branch_execs++;
 
     // instruction trace
     if (trace || verbose)
     {
-        printf("sob instruction sm %o, sr %o dm %o dr %o\n", src.mode, src.reg, dst.mode, dst.reg);
+        printf("sob instruction reg %o with offset %03o\n", reg_index, offset);
     }
 
     // value dump
     if (verbose) {
-        printf("  dst.value = %07o\n", dst.value);
-        printf("  nzvc bits = 4'b%d%d%d%d\n", n, z, v, c);
-        
+      
         // register dump
         pregs();
     }
