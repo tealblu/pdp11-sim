@@ -11,6 +11,9 @@
  * 
  */
 
+// Run command format: ./a.out <flags>
+// Flags: -t (instruction trace), -v (verbose trace)
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -75,12 +78,8 @@ int main(int argc, char *argv[])
     n = z = v = c = false;
     src.mode = src.reg = src.addr = src.value = 0;
     dst.mode = dst.reg = dst.addr = dst.value = 0;
-
-    // Initialize memory
     for (int i = 0; i < MEMSIZE; i++) memory[i] = 0;
-
-    // Run command format: ./a.out <flags>
-    // Flags: -t (instruction trace), -v (verbose trace)
+    reg[7] = 0;
 
     // Check for flags
     for (int i = 1; i < argc; i++)
@@ -93,13 +92,11 @@ int main(int argc, char *argv[])
             exit(1);
         }
     }
-
-    // verbose trace
-    if (verbose) printf("\nreading words in octal from stdin:\n");
-
-    // Read words in octal from stdin
+    
+    // Read instructions into memory
     char line[100];
     int i = 0;
+    if (verbose) printf("\nreading words in octal from stdin:\n");
     while (fgets(line, sizeof(line), stdin) != NULL)
     {
         // Read a word into every other memory location
@@ -110,13 +107,8 @@ int main(int argc, char *argv[])
         i += 2;
     }
 
-    // instruction trace
-    if (trace || verbose) printf("\ninstruction trace:\n");
-
-    // Set PC to 0
-    reg[7] = 0;
-
     // Loop through memory
+    if (trace || verbose) printf("\ninstruction trace:\n");
     while (reg[7] < MEMSIZE && running)
     {
         if(trace || verbose) printf("at %05o, ", reg[7]);
@@ -1007,9 +999,11 @@ void pstats() {
         printf("  branches taken            = %d (%0.1f%%)\n", branch_taken, (float) (branch_taken * 100) / branch_execs);
     }
 
-    // Print first 20 words of memory after execution halts
-    printf("\nfirst 20 words of memory after execution halts:\n");
-    for(int i = 0; i < 40; i += 2) printf("  %05o: %06o\n", i, memory[i]);
+    if (verbose) {
+        // Print first 20 words of memory after execution halts
+        printf("\nfirst 20 words of memory after execution halts:\n");
+        for(int i = 0; i < 40; i += 2) printf("  %05o: %06o\n", i, memory[i]);
+    }
 }
 
 void pregs() {
