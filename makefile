@@ -1,4 +1,4 @@
-SRCS = pdp11-sim.c
+SRCS = pdp11-sim.c cache.c
 TARFILES = makefile README.md $(SRCS)
 CC = gcc
 CFLAGS = -g -Wall

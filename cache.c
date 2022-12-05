@@ -71,10 +71,7 @@
  * NOTE: Line size changed to 8 bytes
  */
 
-#include<stdio.h>
-#include<stdlib.h>
-
-#define LINES_PER_BANK 32
+#include "cache.h"
 
 unsigned int
   plru_state[LINES_PER_BANK],  /* current state for each set */
