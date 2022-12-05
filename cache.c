@@ -66,6 +66,9 @@
  *   Manual, 1998, http://www.intel.com/design/intarch/manuals/273204.htm)
  *
  * note that there is separate state kept for each set (i.e., index value)
+ * 
+ * NOTE: Cache size changed to 512 B
+ * NOTE: Line size changed to 8 bytes
  */
 
 #include<stdio.h>
@@ -129,9 +132,9 @@ void cache_stats( void ){
 
 /* address is byte address, type is read (=0) or write (=1) */
 
-void cache_access( unsigned int address, unsigned int type ){
+void cache_access( uint8_t address, bool type ){
 
-  unsigned int
+  uint8_t
     addr_tag,    /* tag bits of address     */
     addr_index,  /* index bits of address   */
     bank;        /* bank that hit, or bank chosen for replacement */
@@ -142,8 +145,11 @@ void cache_access( unsigned int address, unsigned int type ){
     cache_writes++;
   }
 
-  addr_index = (address >> 5) & 0x1f;
-  addr_tag = address >> 10;
+  // Get index for 8 byte line size
+  addr_index = (address >> 3) & 0x1F;
+
+  // Get tag for 8 byte line size
+  addr_tag = (address >> 8) & 0xFF;
 
   /* check bank 0 hit */
 

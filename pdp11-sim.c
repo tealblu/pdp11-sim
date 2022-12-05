@@ -25,6 +25,8 @@
 
 // Defines
 #define MEMSIZE (32*1024)
+#define MODE_READ 0
+#define MODE_WRITE 1
 
 /* struct top help organize source and destination operand handling */
 typedef struct ap {
