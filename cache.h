@@ -6,7 +6,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define LINES_PER_BANK 32
+#define LINES_PER_BANK 16
 
 void cache_init( void );
 void cache_stats( void );
