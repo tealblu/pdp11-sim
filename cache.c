@@ -144,13 +144,12 @@ void cache_access( uint8_t address, bool type ){
 
   // tag (1) | index (5) | offset (2)
 
-  // Get index for 8 byte line size
-  //addr_index = (address >> 3) & 0x1F;
+  // Get index for 8 byte line size and mask with 5
   addr_index = (address >> 2) & 0x1F;
 
   // Get tag for 8 byte line size
   //addr_tag = (address >> 8) & 0x7F;
-  addr_tag = (address >> 7) & 0x7F;
+  addr_tag = (address >> 7) & 0x7F; // <-- something is wrong here
 
   /* check bank 0 hit */
 

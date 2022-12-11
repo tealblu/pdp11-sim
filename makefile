@@ -1,5 +1,5 @@
 SRCS = pdp11-sim.c cache.c
-TARFILES = makefile README.md $(SRCS)
+TARFILES = makefile README.md $(SRCS) a.out
 CC = gcc
 CFLAGS = -g -Wall
 
@@ -15,10 +15,10 @@ trace: default
 verbose: default
 	./a.out -v < test.txt
 
-tar: clean
-	tar -czvf chkarts_project1.tar.gz $(TARFILES)
+tar:
+	tar -czvf ckharts_project2.tar.gz $(TARFILES)
 
 clean:
 	rm -f a.out
-	rm -f chkarts_project1.tar.gz
+	rm -f ckharts_project2.tar.gz
 	clear

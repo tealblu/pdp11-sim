@@ -120,6 +120,7 @@ int main(int argc, char *argv[])
 
         // Get instruction from memory
         uint16_t instruction = memory[reg[7]];
+        cache_access(reg[7], MODE_READ);
         reg[7] += 2;
 
         #ifdef DEBUG
@@ -209,7 +210,6 @@ void operate(uint16_t instruction) {
 
     // Increment instruction fetch count
     inst_fetches++;
-    cache_access(reg[7], MODE_READ);
 }
 
 void get_operand( addr_phrase_t *phrase) {
@@ -254,7 +254,7 @@ void get_operand( addr_phrase_t *phrase) {
                 // Operand is in the next word in memory
                 phrase->addr = reg[phrase->reg];
                 inst_fetches++;
-                cache_access(phrase->addr, MODE_READ);
+                // cache_access(phrase->addr, MODE_READ);
                 reg[7] += 2;
                 assert( phrase->value < 0200000 );
             }
@@ -266,7 +266,7 @@ void get_operand( addr_phrase_t *phrase) {
             }
 
             phrase->value = memory[phrase->addr];  /* value is in memory */
-            // cache_access(phrase->addr, MODE_READ);
+            cache_access(phrase->addr, MODE_READ);
 
             #ifdef DEBUG
             printf("get_operand: addr: %07o, value: %07o\n", phrase->addr, phrase->value);
@@ -283,7 +283,7 @@ void get_operand( addr_phrase_t *phrase) {
 
                 // The address of the operand is in the next word
                 phrase->addr = memory[reg[7]];
-                cache_access(reg[7], MODE_READ);
+                // cache_access(reg[7], MODE_READ);
                 inst_fetches++;
                 reg[7] += 2;
                 assert( phrase->addr < MEMSIZE );
@@ -305,7 +305,7 @@ void get_operand( addr_phrase_t *phrase) {
             // The value of the operand is in memory
             phrase->value = memory[phrase->addr];
             assert( phrase->value < 0200000 );
-            // cache_access(phrase->addr, MODE_READ);
+            cache_access(phrase->addr, MODE_READ);
 
             // Increment the register
             reg[phrase->reg] += 2;
@@ -322,7 +322,7 @@ void get_operand( addr_phrase_t *phrase) {
             assert( phrase->addr < MEMSIZE );
 
             phrase->value = memory[phrase->addr];  /* value is in memory */
-            // cache_access(phrase->addr, MODE_READ);
+            cache_access(phrase->addr, MODE_READ);
             memory_reads++;
             assert( phrase->value < 0200000 );
             break;
@@ -333,12 +333,12 @@ void get_operand( addr_phrase_t *phrase) {
             phrase->addr = reg[phrase->reg];  /* address is in the register */
             assert( phrase->addr < MEMSIZE );
             phrase->addr = memory[phrase->addr];  /* address is in memory */
-            // cache_access(phrase->addr, MODE_READ);
+            cache_access(phrase->addr, MODE_READ);
             memory_reads++;
             assert( phrase->addr < MEMSIZE );
             
             phrase->value = memory[phrase->addr];  /* value is in memory */
-            // cache_access(phrase->addr, MODE_READ);
+            cache_access(phrase->addr, MODE_READ);
             memory_reads++;
 
             #ifdef DEBUG
@@ -352,7 +352,7 @@ void get_operand( addr_phrase_t *phrase) {
             if( phrase->reg == 7 ) { // Relative mode
                 // The address of the operand is in the next word of the instruction added to the PC
                 phrase->addr = memory[reg[7]] + reg[7];
-                cache_access(reg[7], MODE_READ);
+                //cache_access(reg[7], MODE_READ);
                 inst_fetches++;
                 reg[7] += 2;
                 assert( phrase->addr < MEMSIZE );
@@ -361,7 +361,7 @@ void get_operand( addr_phrase_t *phrase) {
             // Update register mode
             else {
                 phrase->addr = memory[reg[7]] + reg[phrase->reg];
-                cache_access(reg[7], MODE_READ);
+                //cache_access(reg[7], MODE_READ);
                 inst_fetches++;
                 reg[7] += 2;
                 assert( phrase->addr < MEMSIZE );
@@ -369,7 +369,7 @@ void get_operand( addr_phrase_t *phrase) {
 
             // Get value from memory
             phrase->value = memory[phrase->addr];
-            // cache_access(phrase->addr, MODE_READ);
+            cache_access(phrase->addr, MODE_READ);
             memory_reads += 2;
             assert( phrase->value < 0200000 );
 
@@ -384,7 +384,7 @@ void get_operand( addr_phrase_t *phrase) {
             if( phrase->reg == 7 ) { // Relative deferred mode
                 // The address of the address of the operand is the next word of the instruction added to reg[7]
                 phrase->addr = memory[reg[7]] + reg[7];
-                cache_access(reg[7], MODE_READ);
+                // cache_access(reg[7], MODE_READ);
                 inst_fetches++;
                 assert( phrase->addr < MEMSIZE );
             }
@@ -392,7 +392,7 @@ void get_operand( addr_phrase_t *phrase) {
             // Update register mode
             else {
                 phrase->addr = memory[reg[7]] + reg[phrase->reg];
-                cache_access(reg[7], MODE_READ);
+                // cache_access(reg[7], MODE_READ);
                 inst_fetches++;
                 // Fix out of bounds addresses
                 while( phrase->addr >= MEMSIZE ) {
@@ -403,11 +403,11 @@ void get_operand( addr_phrase_t *phrase) {
             reg[7] += 2;
 
             // Get value from memory
+            cache_access(phrase->addr, MODE_READ);
             phrase->addr = memory[phrase->addr];
-            // cache_access(phrase->addr, MODE_READ);
             assert( phrase->addr < MEMSIZE );
             phrase->value = memory[phrase->addr];
-            // cache_access(phrase->addr, MODE_READ);
+            cache_access(phrase->addr, MODE_READ);
             memory_reads += 2;
             assert( phrase->value < 0200000 );
 
