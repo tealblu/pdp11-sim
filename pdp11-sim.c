@@ -2,7 +2,7 @@
 
 /**
  * @file pdp11-sim.c
- * @author Charles "Blue" Hartsell (ckharts@clemson.edu)
+ * @author Indigo Hartsell
  * @brief Simulation of PDP-11 instruction set
  * @version 0.1
  * @date 2022-10-26
